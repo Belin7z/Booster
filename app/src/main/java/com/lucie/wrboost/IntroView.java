@@ -172,7 +172,7 @@ public class IntroView extends View {
             float kick = (float) Math.exp(-after * 5f) * (float) Math.cos(after * 22f);
             scale = 1.0f + 0.22f * kick;
         }
-        float lr = base * scale * clamp(t / 300f);
+        float lr = Math.max(1f, base * scale * clamp(t / 300f));
         p.setStyle(Paint.Style.FILL);
         p.setShader(new RadialGradient(cx + sx, cy + sy, lr * 1.7f, new int[]{alpha(acc, 0.55f * (0.3f + e)), 0}, null, Shader.TileMode.CLAMP));
         cv.drawCircle(cx + sx, cy + sy, lr * 1.7f, p);
