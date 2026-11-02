@@ -27,7 +27,7 @@ import java.util.Set;
 
 /** Bolha flutuante durante o jogo que abre um painel com atalhos, sem sair do jogo. */
 public class GamePanel {
-    private static final int BG = 0xF00A0F1C, CARD = 0xFF141C33, TXT = 0xFFF2F5FF, MUT = 0xFF8D99B8, ACC = 0xFF4DA3FF;
+    private static final int BG = 0xF50A0F1C, CARD = 0xFF141C33, LINE = 0xFF222E4D, TXT = 0xFFF2F5FF, MUT = 0xFF8D99B8;
     private static final String[] DEFAULT_APPS = {"com.whatsapp", "org.telegram.messenger", "com.discord",
             "com.google.android.youtube", "com.spotify.music", "com.android.chrome", "com.instagram.android"};
 
@@ -41,7 +41,8 @@ public class GamePanel {
     private boolean cleaning;
     private String sig = "";
     private static volatile boolean recording;
-    private TextView tvRec, tvBright;
+    private TextView tvRec, tvFps, tvCpu, tvRam;
+    private android.widget.SeekBar brBar;
     private android.widget.SeekBar volBar;
 
     private SharedPreferences prefs() {
@@ -121,7 +122,7 @@ public class GamePanel {
         v.setColorFilter(0xFF04101F);
         int pad = (int) (10 * d);
         v.setPadding(pad, pad, pad, pad);
-        GradientDrawable g = round(ACC, 24);
+        GradientDrawable g = round(acc(), 24);
         g.setShape(GradientDrawable.OVAL);
         g.setStroke((int) (2 * d), 0x55FFFFFF);
         v.setBackground(g);
@@ -207,30 +208,67 @@ public class GamePanel {
         return t;
     }
 
-    private TextView action(String label, int icon) {
-        TextView t = text(label, 13, TXT, true);
+    private int acc() {
+        return Theme.ACCENTS[Theme.accentIndex(c)];
+    }
+
+    // Botão em bloco: ícone em cima, texto embaixo. O principal vem preenchido com a cor de destaque.
+    private TextView tile(String label, int icon, boolean primary) {
+        TextView t = text(label, 12, primary ? 0xFF04101F : TXT, true);
         t.setGravity(Gravity.CENTER);
-        t.setBackground(round(CARD, 12));
-        t.setPadding((int) (8 * d), (int) (12 * d), (int) (8 * d), (int) (12 * d));
+        GradientDrawable g = round(primary ? acc() : CARD, 14);
+        if (!primary) g.setStroke((int) d, LINE);
+        t.setBackground(g);
+        t.setPadding((int) (6 * d), (int) (12 * d), (int) (6 * d), (int) (10 * d));
         android.graphics.drawable.Drawable dr = c.getDrawable(icon).mutate();
-        dr.setTint(ACC);
-        int s = (int) (18 * d);
+        dr.setTint(primary ? 0xFF04101F : acc());
+        int s = (int) (22 * d);
         dr.setBounds(0, 0, s, s);
-        t.setCompoundDrawables(dr, null, null, null);
+        t.setCompoundDrawables(null, dr, null, null);
         t.setCompoundDrawablePadding((int) (6 * d));
+        t.setSingleLine(true);
         return t;
+    }
+
+    private LinearLayout chip(String label, TextView[] out, int idx) {
+        LinearLayout l = new LinearLayout(c);
+        l.setOrientation(LinearLayout.VERTICAL);
+        l.setGravity(Gravity.CENTER);
+        l.setPadding(0, (int) (8 * d), 0, (int) (8 * d));
+        l.setBackground(round(CARD, 12));
+        TextView v = text("--", 17, TXT, true);
+        v.setGravity(Gravity.CENTER);
+        TextView n = text(label, 10, MUT, false);
+        n.setGravity(Gravity.CENTER);
+        l.addView(v);
+        l.addView(n);
+        out[idx] = v;
+        return l;
+    }
+
+    private LinearLayout slider(String label, android.widget.SeekBar bar) {
+        LinearLayout r = new LinearLayout(c);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(0, (int) (10 * d), 0, 0);
+        r.addView(text(label, 12, MUT, false), new LinearLayout.LayoutParams((int) (52 * d), ViewGroup.LayoutParams.WRAP_CONTENT));
+        bar.getProgressDrawable().setTint(acc());
+        bar.getThumb().setTint(acc());
+        r.addView(bar, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        return r;
     }
 
     private void openPanel() {
         if (panel != null) return;
         FrameLayout root = new FrameLayout(c);
-        root.setBackgroundColor(0x66000000);
+        root.setBackgroundColor(0x80000000);
         root.setOnClickListener(v -> closePanel());
 
         LinearLayout box = new LinearLayout(c);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setBackground(round(BG, 18));
-        int pad = (int) (14 * d);
+        GradientDrawable bg = round(BG, 22);
+        bg.setStroke((int) d, LINE);
+        box.setBackground(bg);
+        int pad = (int) (16 * d);
         box.setPadding(pad, pad, pad, pad);
         box.setOnClickListener(v -> {
         });
@@ -238,95 +276,94 @@ public class GamePanel {
         String game = Monitor.activeGame();
         LinearLayout head = new LinearLayout(c);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text(game == null ? "Booster" : Games.label(c, game), 16, TXT, true);
+        ImageView logo = new ImageView(c);
+        logo.setImageResource(R.drawable.ic_bolt);
+        logo.setColorFilter(0xFF04101F);
+        int lp0 = (int) (7 * d);
+        logo.setPadding(lp0, lp0, lp0, lp0);
+        logo.setBackground(round(acc(), 10));
+        head.addView(logo, new LinearLayout.LayoutParams((int) (32 * d), (int) (32 * d)));
+        LinearLayout names = new LinearLayout(c);
+        names.setOrientation(LinearLayout.VERTICAL);
+        names.setPadding((int) (10 * d), 0, 0, 0);
+        TextView title = text(game == null ? "Booster" : Games.label(c, game), 15, TXT, true);
         title.setSingleLine(true);
-        head.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        names.addView(title);
+        names.addView(text("Booster", 11, MUT, false));
+        head.addView(names, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         ImageView x = new ImageView(c);
         x.setImageResource(R.drawable.ic_close);
         x.setColorFilter(MUT);
+        int xp = (int) (4 * d);
+        x.setPadding(xp, xp, xp, xp);
         x.setOnClickListener(v -> closePanel());
-        head.addView(x, new LinearLayout.LayoutParams((int) (24 * d), (int) (24 * d)));
+        head.addView(x, new LinearLayout.LayoutParams((int) (32 * d), (int) (32 * d)));
         box.addView(head);
 
-        stats = text("", 13, MUT, false);
-        stats.setPadding(0, (int) (6 * d), 0, (int) (10 * d));
+        LinearLayout chips = new LinearLayout(c);
+        chips.setPadding(0, (int) (14 * d), 0, 0);
+        TextView[] cv = new TextView[3];
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        cp.setMargins((int) (3 * d), 0, (int) (3 * d), 0);
+        chips.addView(chip("FPS", cv, 0), cp);
+        chips.addView(chip("CPU", cv, 1), cp);
+        chips.addView(chip("RAM", cv, 2), cp);
+        tvFps = cv[0];
+        tvCpu = cv[1];
+        tvRam = cv[2];
+        box.addView(chips);
+
+        stats = text("", 11, 0xFFFFC857, false);
+        stats.setPadding((int) (3 * d), (int) (6 * d), 0, 0);
+        stats.setVisibility(View.GONE);
         box.addView(stats);
 
-        LinearLayout row = new LinearLayout(c);
-        tvClean = action("Liberar RAM", R.drawable.ic_memory);
+        GridLayout acts = new GridLayout(c);
+        acts.setColumnCount(2);
+        acts.setPadding(0, (int) (12 * d), 0, 0);
+        tvClean = tile("Liberar RAM", R.drawable.ic_memory, true);
         tvClean.setOnClickListener(v -> clean());
-        tvDnd = action("Não perturbe", R.drawable.ic_shield);
+        tvDnd = tile("Não perturbe", R.drawable.ic_shield, false);
         tvDnd.setOnClickListener(v -> toggleDnd());
-        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        lp1.setMargins(0, 0, (int) (4 * d), 0);
-        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        lp2.setMargins((int) (4 * d), 0, 0, 0);
-        row.addView(tvClean, lp1);
-        row.addView(tvDnd, lp2);
-        box.addView(row);
-
-        LinearLayout row2 = new LinearLayout(c);
-        row2.setPadding(0, (int) (8 * d), 0, 0);
-        TextView shot = action("Captura", R.drawable.ic_overlay);
+        TextView shot = tile("Captura", R.drawable.ic_overlay, false);
         shot.setOnClickListener(v -> screenshot());
-        tvRec = action("Gravar tela", R.drawable.ic_play);
+        tvRec = tile("Gravar tela", R.drawable.ic_play, false);
         tvRec.setOnClickListener(v -> toggleRecord());
-        row2.addView(shot, lp1);
-        row2.addView(tvRec, lp2);
-        box.addView(row2);
+        for (TextView t : new TextView[]{tvClean, tvDnd, shot, tvRec}) {
+            GridLayout.LayoutParams gp = new GridLayout.LayoutParams(GridLayout.spec(GridLayout.UNDEFINED, 1f), GridLayout.spec(GridLayout.UNDEFINED, 1f));
+            gp.width = 0;
+            gp.setMargins((int) (3 * d), (int) (3 * d), (int) (3 * d), (int) (3 * d));
+            acts.addView(t, gp);
+        }
+        box.addView(acts);
 
-        LinearLayout row3 = new LinearLayout(c);
-        row3.setGravity(Gravity.CENTER_VERTICAL);
-        row3.setPadding(0, (int) (10 * d), 0, 0);
-        row3.addView(text("Volume", 12, MUT, false), new LinearLayout.LayoutParams((int) (56 * d), ViewGroup.LayoutParams.WRAP_CONTENT));
         final android.media.AudioManager am = c.getSystemService(android.media.AudioManager.class);
         volBar = new android.widget.SeekBar(c);
         volBar.setMax(am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC));
         volBar.setProgress(am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC));
-        volBar.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+        volBar.setOnSeekBarChangeListener(new SimpleSeek() {
             @Override
             public void onProgressChanged(android.widget.SeekBar s, int p, boolean user) {
                 if (user) am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, p, 0);
             }
+        });
+        box.addView(slider("Volume", volBar));
 
+        brBar = new android.widget.SeekBar(c);
+        brBar.setMax(255);
+        brBar.setProgress(currentBrightness());
+        brBar.setOnSeekBarChangeListener(new SimpleSeek() {
             @Override
-            public void onStartTrackingTouch(android.widget.SeekBar s) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(android.widget.SeekBar s) {
+            public void onProgressChanged(android.widget.SeekBar s, int p, boolean user) {
+                if (user) setBrightness(Math.max(2, p));
             }
         });
-        row3.addView(volBar, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        box.addView(row3);
+        box.addView(slider("Brilho", brBar));
 
-        LinearLayout row4 = new LinearLayout(c);
-        row4.setGravity(Gravity.CENTER_VERTICAL);
-        row4.setPadding(0, (int) (8 * d), 0, 0);
-        row4.addView(text("Brilho", 12, MUT, false), new LinearLayout.LayoutParams((int) (56 * d), ViewGroup.LayoutParams.WRAP_CONTENT));
-        TextView minus = action("-", R.drawable.ic_tune);
-        minus.setCompoundDrawables(null, null, null, null);
-        minus.setText("−");
-        minus.setOnClickListener(v -> brightness(0.8f));
-        TextView plus = action("+", R.drawable.ic_tune);
-        plus.setCompoundDrawables(null, null, null, null);
-        plus.setText("+");
-        plus.setOnClickListener(v -> brightness(1.25f));
-        tvBright = text("", 12, MUT, false);
-        tvBright.setGravity(Gravity.CENTER);
-        row4.addView(minus, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        row4.addView(tvBright, new LinearLayout.LayoutParams((int) (56 * d), ViewGroup.LayoutParams.WRAP_CONTENT));
-        row4.addView(plus, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        box.addView(row4);
-
-        TextView hdr = text("APPS RÁPIDOS", 11, MUT, true);
-        hdr.setLetterSpacing(0.12f);
-        hdr.setPadding(0, (int) (14 * d), 0, (int) (6 * d));
-        box.addView(hdr);
-
+        PackageManager pm = c.getPackageManager();
         GridLayout grid = new GridLayout(c);
         grid.setColumnCount(4);
-        PackageManager pm = c.getPackageManager();
         int n = 0;
         for (String pkg : apps(c)) {
             if (pm.getLaunchIntentForPackage(pkg) == null) continue;
@@ -339,7 +376,7 @@ public class GamePanel {
                 ic.setImageDrawable(pm.getApplicationIcon(pkg));
             } catch (Exception ignored) {
             }
-            cell.addView(ic, new LinearLayout.LayoutParams((int) (42 * d), (int) (42 * d)));
+            cell.addView(ic, new LinearLayout.LayoutParams((int) (40 * d), (int) (40 * d)));
             TextView nm = text(Games.label(c, pkg), 10, MUT, false);
             nm.setSingleLine(true);
             nm.setGravity(Gravity.CENTER);
@@ -350,16 +387,13 @@ public class GamePanel {
             grid.addView(cell);
             n++;
         }
-        if (n == 0) {
-            box.addView(text("Escolha os apps do painel em Configurações > Painel no jogo.", 12, MUT, false));
-        } else {
+        if (n > 0) {
+            TextView hdr = text("APPS RÁPIDOS", 10, MUT, true);
+            hdr.setLetterSpacing(0.14f);
+            hdr.setPadding((int) (3 * d), (int) (16 * d), 0, (int) (4 * d));
+            box.addView(hdr);
             box.addView(grid);
         }
-        TextView open = text("Abrir Booster", 13, ACC, true);
-        open.setGravity(Gravity.CENTER);
-        open.setPadding(0, (int) (12 * d), 0, 0);
-        open.setOnClickListener(v -> launch(c.getPackageName()));
-        box.addView(open);
 
         FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams((int) (320 * d), ViewGroup.LayoutParams.WRAP_CONTENT,
                 (rightSide() ? Gravity.END : Gravity.START) | Gravity.CENTER_VERTICAL);
@@ -378,10 +412,23 @@ public class GamePanel {
             wm.addView(root, lp);
             panel = root;
             refreshPanel();
+            root.setAlpha(0f);
+            root.animate().alpha(1f).setDuration(180).start();
+            sv.setTranslationX((rightSide() ? 1 : -1) * 40 * d);
+            sv.animate().translationX(0).setDuration(260).setInterpolator(new android.view.animation.DecelerateInterpolator(1.8f)).start();
         } catch (Exception ignored) {
         }
     }
 
+    private abstract static class SimpleSeek implements android.widget.SeekBar.OnSeekBarChangeListener {
+        @Override
+        public void onStartTrackingTouch(android.widget.SeekBar s) {
+        }
+
+        @Override
+        public void onStopTrackingTouch(android.widget.SeekBar s) {
+        }
+    }
     private void closePanel() {
         if (panel != null) {
             try {
@@ -394,24 +441,27 @@ public class GamePanel {
 
     private void refreshPanel() {
         Monitor.Sample m = Monitor.latest;
-        if (m != null && stats != null) {
-            StringBuilder sb = new StringBuilder();
-            sb.append(m.fps >= 0 ? m.fps : "--").append(" / ").append(m.hz).append(" FPS");
-            if (!Float.isNaN(m.cpu)) sb.append("   CPU ").append(Math.round(m.cpu)).append("°C");
-            if (m.sys != null) sb.append("   RAM ").append(m.sys.ramUsedPct()).append("%");
-            if (m.cause != null) sb.append("\nQueda de FPS: ").append(m.cause);
-            stats.setText(sb);
-            stats.setTextColor(m.cause != null ? 0xFFFFC857 : MUT);
+        if (m != null && tvFps != null) {
+            tvFps.setText((m.fps >= 0 ? String.valueOf(m.fps) : "--") + "/" + m.hz);
+            tvFps.setTextColor(m.fps < 0 ? TXT : m.fps >= m.hz * 0.9f ? 0xFF2ECC71 : m.fps >= m.hz * 0.65f ? 0xFFF5A623 : 0xFFFF5252);
+            boolean cpuOk = !Float.isNaN(m.cpu);
+            tvCpu.setText(cpuOk ? Math.round(m.cpu) + "°" : "--");
+            tvCpu.setTextColor(!cpuOk ? TXT : m.cpu >= 45 ? 0xFFFF5252 : m.cpu >= 40 ? 0xFFF5A623 : 0xFF2ECC71);
+            int ram = m.sys != null ? m.sys.ramUsedPct() : -1;
+            tvRam.setText(ram >= 0 ? ram + "%" : "--");
+            tvRam.setTextColor(ram < 0 ? TXT : ram >= 85 ? 0xFFFF5252 : ram >= 70 ? 0xFFF5A623 : 0xFF2ECC71);
+            if (stats != null) {
+                stats.setVisibility(m.cause != null ? View.VISIBLE : View.GONE);
+                if (m.cause != null) stats.setText("Queda de FPS: " + m.cause);
+            }
         }
         if (tvRec != null) tvRec.setText(recording ? "Parar gravação" : "Gravar tela");
-        if (tvBright != null) tvBright.setText(String.valueOf(currentBrightness()));
         if (tvDnd != null) {
             boolean on = dndOn();
-            tvDnd.setText(on ? "Não perturbe: ligado" : "Não perturbe");
-            tvDnd.setTextColor(on ? ACC : TXT);
+            tvDnd.setText(on ? "Silencioso: ligado" : "Não perturbe");
+            tvDnd.setTextColor(on ? acc() : TXT);
         }
     }
-
     private boolean dndOn() {
         try {
             return c.getSystemService(NotificationManager.class).getCurrentInterruptionFilter()
@@ -454,9 +504,7 @@ public class GamePanel {
         }
     }
 
-    private void brightness(float factor) {
-        int cur = currentBrightness();
-        int next = Math.max(2, Math.round(cur * factor) + (factor > 1 ? 1 : 0));
+    private void setBrightness(int next) {
         if (android.provider.Settings.System.canWrite(c)) {
             android.provider.Settings.System.putInt(c.getContentResolver(), "screen_brightness_mode", 0);
             android.provider.Settings.System.putInt(c.getContentResolver(), "screen_brightness", next);
@@ -465,9 +513,7 @@ public class GamePanel {
             new Thread(() -> Shell.exec("settings put system screen_brightness_mode 0; settings put system screen_brightness " + v, 3000)).start();
         } else {
             Toast.makeText(c, "Brilho precisa do modo avançado conectado", Toast.LENGTH_SHORT).show();
-            return;
         }
-        if (tvBright != null) tvBright.setText(String.valueOf(next));
     }
 
     private void screenshot() {
