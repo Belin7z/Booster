@@ -51,8 +51,8 @@ public class OverlayService extends Service {
             Monitor.acquire(this);
             acquired = true;
         }
-        if (view == null && Settings.canDrawOverlays(this)
-                && getSharedPreferences("wr", MODE_PRIVATE).getBoolean("overlay", true)) addOverlay();
+        removeOverlay();
+        if (Settings.canDrawOverlays(this) && getSharedPreferences("wr", MODE_PRIVATE).getBoolean("overlay", true)) addOverlay();
         h.removeCallbacks(tick);
         h.post(tick);
         running = true;
@@ -85,7 +85,10 @@ public class OverlayService extends Service {
         view.setTextColor(0xFFFFFFFF);
         view.setTextSize(11);
         view.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        view.setBackgroundColor(0x99000000);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(0xB3000000);
+        bg.setCornerRadius(8 * d);
+        view.setBackground(bg);
         int p = (int) (6 * d);
         view.setPadding(p, p / 2, p, p / 2);
 
@@ -94,11 +97,13 @@ public class OverlayService extends Service {
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT);
-        lp.gravity = Gravity.TOP | Gravity.START;
-        lp.x = (int) (80 * d);
+        int pos = getSharedPreferences("wr", MODE_PRIVATE).getInt("pos", 0);
+        lp.gravity = Gravity.TOP | (pos == 1 ? Gravity.CENTER_HORIZONTAL : pos == 2 ? Gravity.END : Gravity.START);
+        lp.x = pos == 1 ? 0 : (int) (48 * d);
         lp.y = (int) (4 * d);
+        lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         wm.addView(view, lp);
     }
 
@@ -133,13 +138,17 @@ public class OverlayService extends Service {
             Monitor.release();
             acquired = false;
         }
+        removeOverlay();
+        super.onDestroy();
+    }
+
+    private void removeOverlay() {
         if (view != null && wm != null) {
             try {
                 wm.removeView(view);
             } catch (Exception ignored) {
             }
-            view = null;
         }
-        super.onDestroy();
+        view = null;
     }
 }
