@@ -465,6 +465,48 @@ public class MainActivity extends Activity {
         dg.addView(tut, btnParams(46));
         dg.addView(text("O ping é medido com conexões rápidas ao servidor 1.1.1.1 (Cloudflare) só durante o jogo; nenhum dado seu é enviado.", 12, MUT, false));
 
+        // Sobre
+        LinearLayout ab = page("Sobre", R.drawable.ic_bolt);
+        LinearLayout abc = card();
+        abc.setGravity(Gravity.CENTER_HORIZONTAL);
+        ImageView abLogo = new ImageView(this);
+        abLogo.setImageDrawable(icon(R.drawable.ic_bolt, Theme.ONACC));
+        abLogo.setBackground(round(Theme.ACC, 22));
+        int abp = (int) dp(16);
+        abLogo.setPadding(abp, abp, abp, abp);
+        LinearLayout.LayoutParams abl = new LinearLayout.LayoutParams((int) dp(72), (int) dp(72));
+        abl.setMargins(0, (int) dp(8), 0, (int) dp(10));
+        abc.addView(abLogo, abl);
+        TextView abName = text("Booster", 22, TXT, true);
+        abName.setGravity(Gravity.CENTER);
+        abc.addView(abName);
+        TextView abVer = text("Versão " + Updater.installedName(this), 12, MUT, false);
+        abVer.setGravity(Gravity.CENTER);
+        abc.addView(abVer);
+        TextView abBy = text("Criado por", 11, MUT, false);
+        abBy.setGravity(Gravity.CENTER);
+        abBy.setPadding(0, (int) dp(16), 0, 0);
+        abc.addView(abBy);
+        TextView abAuthor = text("Belin7z", 20, Theme.ACC, true);
+        abAuthor.setGravity(Gravity.CENTER);
+        abc.addView(abAuthor);
+        ab.addView(abc);
+        Button gh = button("GitHub · Belin7z", Theme.BTN2, TXT);
+        withIcon(gh, R.drawable.ic_code, TXT);
+        gh.setTextSize(14);
+        gh.setOnClickListener(v -> openUrl("https://github.com/Belin7z"));
+        ab.addView(gh, btnParams(48));
+        Button ig = button("Instagram · @vdb.belin7z", Theme.BTN2, TXT);
+        withIcon(ig, R.drawable.ic_share, TXT);
+        ig.setTextSize(14);
+        ig.setOnClickListener(v -> openUrl("https://instagram.com/vdb.belin7z"));
+        ab.addView(ig, btnParams(48));
+        Button repo = button("Código e versões do Booster", Theme.BTN2, TXT);
+        withIcon(repo, R.drawable.ic_download, TXT);
+        repo.setTextSize(14);
+        repo.setOnClickListener(v -> openUrl("https://github.com/Belin7z/Booster"));
+        ab.addView(repo, btnParams(48));
+
         scrim = new View(this);
         scrim.setBackgroundColor(0x99000000);
         scrim.setVisibility(View.GONE);
@@ -542,7 +584,7 @@ public class MainActivity extends Activity {
             if (isDestroyed()) return;
             if (!prefs.getBoolean("onboarded", false)) showTutorial();
             else showWhatsNew();
-        }, b == null ? 1700 : 300);
+        }, b == null ? IntroView.TOTAL + 900 : 300);
         handleIntent(getIntent());
         if (prefs.getBoolean("auto", true) && !OverlayService.running) startForegroundService(new Intent(this, OverlayService.class));
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
@@ -687,52 +729,31 @@ public class MainActivity extends Activity {
         return super.dispatchTouchEvent(e);
     }
 
-    // Abertura: logo com pulso sobre o fundo escuro, depois o conteúdo entra em cascata.
+    // Abertura: rajadas de velocidade, logo, nome e assinatura; depois o conteúdo entra em cascata.
     private void playIntro(final FrameLayout root, final View main) {
-        final LinearLayout splash = new LinearLayout(this);
-        splash.setOrientation(LinearLayout.VERTICAL);
-        splash.setGravity(Gravity.CENTER);
-        splash.setBackgroundColor(BG);
-        splash.setClickable(true);
-        final ImageView logo = new ImageView(this);
-        logo.setImageDrawable(icon(R.drawable.ic_bolt, Theme.ONACC));
-        logo.setBackground(round(Theme.ACC, 28));
-        int pad = (int) dp(22);
-        logo.setPadding(pad, pad, pad, pad);
-        splash.addView(logo, new LinearLayout.LayoutParams((int) dp(96), (int) dp(96)));
-        final TextView name = text("Booster", 26, TXT, true);
-        name.setGravity(Gravity.CENTER);
-        name.setPadding(0, (int) dp(18), 0, 0);
-        splash.addView(name);
-        root.addView(splash, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        logo.setScaleX(0.5f);
-        logo.setScaleY(0.5f);
-        logo.setAlpha(0f);
-        name.setAlpha(0f);
-        name.setTranslationY(dp(14));
+        final IntroView intro = new IntroView(this);
+        intro.setClickable(true);
+        root.addView(intro, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         main.setAlpha(0f);
-        main.setScaleX(0.96f);
-        main.setScaleY(0.96f);
-        final View home = ((ViewGroup) pages.get(0)).getChildAt(0);
-        final ViewGroup hg = (ViewGroup) home;
+        main.setScaleX(0.94f);
+        main.setScaleY(0.94f);
+        final ViewGroup hg = (ViewGroup) ((ViewGroup) pages.get(0)).getChildAt(0);
         for (int i = 0; i < hg.getChildCount(); i++) {
             hg.getChildAt(i).setAlpha(0f);
             hg.getChildAt(i).setTranslationY(dp(28));
         }
-        logo.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(600)
-                .setInterpolator(new android.view.animation.OvershootInterpolator(1.4f)).start();
-        name.animate().alpha(1f).translationY(0).setStartDelay(250).setDuration(450).start();
-        h.postDelayed(() -> {
-            splash.animate().alpha(0f).setDuration(450).withEndAction(() -> root.removeView(splash)).start();
-            logo.animate().scaleX(1.15f).scaleY(1.15f).setDuration(450).start();
-            main.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(550)
+        final Runnable reveal = () -> {
+            intro.animate().alpha(0f).scaleX(1.2f).scaleY(1.2f).setDuration(500)
+                    .withEndAction(() -> root.removeView(intro)).start();
+            main.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(600)
                     .setInterpolator(new android.view.animation.DecelerateInterpolator(1.5f)).start();
             for (int i = 0; i < hg.getChildCount(); i++) {
                 hg.getChildAt(i).animate().alpha(1f).translationY(0).setStartDelay(150 + 60L * i).setDuration(500)
                         .setInterpolator(new android.view.animation.DecelerateInterpolator(1.8f)).start();
             }
-        }, 1000);
+        };
+        intro.setOnClickListener(v -> intro.finish());
+        intro.start(reveal);
     }
 
     private void toggleDrawer(boolean open) {
@@ -814,7 +835,7 @@ public class MainActivity extends Activity {
         }
         final Updater.Info info = pending;
         dialog().setTitle("Atualizar para v" + info.name)
-                .setMessage(info.notes.isEmpty() ? "Sem notas desta versão." : info.notes)
+                .setView(notesScroll(info.notes.isEmpty() ? "- Sem notas desta versão." : info.notes))
                 .setPositiveButton(Updater.ready(this, info) ? "Instalar" : "Baixar e instalar", (d, w) -> startInstall(info))
                 .setNegativeButton("Agora não", null).show();
     }
@@ -849,7 +870,7 @@ public class MainActivity extends Activity {
                         tvUpdate.setText("Versão instalada: " + Updater.installedName(this) + " (atualizado)");
                         btnUpdate.setText("Verificar atualizações");
                     } else {
-                        tvUpdate.setText("Nova versão disponível: v" + i.name + "\n" + i.notes);
+                        tvUpdate.setText("Nova versão disponível: v" + i.name + "\n" + Updater.plain(i.notes));
                         tvUpdate.setTextColor(OK);
                         btnUpdate.setText("Atualizar para v" + i.name);
                     }
@@ -871,7 +892,7 @@ public class MainActivity extends Activity {
         Updater.Info dl = Updater.downloaded(this);
         if (dl != null && pending == null && tvUpdate != null) {
             pending = dl;
-            tvUpdate.setText("Nova versão já baixada: v" + dl.name + "\n" + dl.notes);
+            tvUpdate.setText("Nova versão já baixada: v" + dl.name + "\n" + Updater.plain(dl.notes));
             tvUpdate.setTextColor(OK);
             btnUpdate.setText("Instalar v" + dl.name);
         }
@@ -923,6 +944,51 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    // Notas em markdown simples (### seção, - item) com visual de seções e marcadores.
+    private LinearLayout notesView(String notes) {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        for (String raw : notes.split("\n")) {
+            String s = raw.trim();
+            if (s.isEmpty() || s.startsWith("## ") || s.startsWith("---")) continue;
+            if (s.startsWith("#")) {
+                TextView hd = text(s.replaceFirst("^#+\\s*", "").toUpperCase(Locale.ROOT), 11, Theme.ACC, true);
+                hd.setLetterSpacing(0.14f);
+                hd.setPadding(0, (int) dp(12), 0, (int) dp(4));
+                l.addView(hd);
+            } else if (s.startsWith("- ") || s.startsWith("* ")) {
+                LinearLayout row = new LinearLayout(this);
+                row.setPadding(0, (int) dp(3), 0, (int) dp(3));
+                TextView dot = text("●", 8, Theme.ACC, false);
+                dot.setPadding(0, (int) dp(5), (int) dp(10), 0);
+                row.addView(dot);
+                row.addView(text(s.substring(2), 13, TXT, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+                l.addView(row);
+            } else {
+                TextView t = text(s, 13, MUT, false);
+                t.setPadding(0, (int) dp(2), 0, (int) dp(2));
+                l.addView(t);
+            }
+        }
+        return l;
+    }
+
+    private ScrollView notesScroll(String notes) {
+        ScrollView sv = new ScrollView(this);
+        LinearLayout l = notesView(notes);
+        l.setPadding((int) dp(22), (int) dp(8), (int) dp(22), (int) dp(8));
+        sv.addView(l);
+        return sv;
+    }
+
+    private void openUrl(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Exception e) {
+            toast("Não foi possível abrir o link.");
+        }
+    }
+
     private void showHistory() {
         toast("Buscando versões…");
         new Thread(() -> {
@@ -930,12 +996,23 @@ public class MainActivity extends Activity {
                 final List<String> rel = Updater.history();
                 h.post(() -> {
                     if (isDestroyed()) return;
-                    StringBuilder sb = new StringBuilder();
-                    for (String r : rel) sb.append(r).append("\n\n");
+                    LinearLayout all = new LinearLayout(this);
+                    all.setOrientation(LinearLayout.VERTICAL);
+                    all.setPadding((int) dp(22), (int) dp(8), (int) dp(22), (int) dp(12));
+                    for (String r : rel) {
+                        int nl = r.indexOf('\n');
+                        TextView title = text(nl < 0 ? r : r.substring(0, nl), 16, TXT, true);
+                        title.setPadding(0, (int) dp(14), 0, 0);
+                        all.addView(title);
+                        if (nl >= 0) all.addView(notesView(r.substring(nl + 1)));
+                        View div = new View(this);
+                        div.setBackgroundColor(Theme.LINE);
+                        LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) dp(1));
+                        dl.topMargin = (int) dp(12);
+                        all.addView(div, dl);
+                    }
                     ScrollView sv = new ScrollView(this);
-                    TextView t = text(sb.toString().trim(), 13, TXT, false);
-                    t.setPadding((int) dp(20), (int) dp(12), (int) dp(20), (int) dp(12));
-                    sv.addView(t);
+                    sv.addView(all);
                     dialog().setTitle("Histórico de versões").setView(sv).setPositiveButton("Fechar", null).show();
                 });
             } catch (Exception e) {
@@ -950,7 +1027,7 @@ public class MainActivity extends Activity {
         prefs.edit().putInt("wn_seen", code).apply();
         String notes = prefs.getString("wn_notes", "");
         if (notes.isEmpty()) return;
-        dialog().setTitle("Novidades da v" + prefs.getString("wn_name", "")).setMessage(notes).setPositiveButton("Entendi", null).show();
+        dialog().setTitle("Novidades da v" + prefs.getString("wn_name", "")).setView(notesScroll(notes)).setPositiveButton("Entendi", null).show();
     }
 
     private LinearLayout tutorial;

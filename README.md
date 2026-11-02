@@ -23,5 +23,9 @@ A assinatura usa as variáveis `WRB_KEYSTORE` e `WRB_PASS` ou um `keystore.prope
 
 ## Publicar uma versão
 
-Criar e enviar uma tag `vX.Y`. O GitHub Actions compila, assina e cria a release com o APK e o `latest.json`,
+Escrever as notas em `notas/vX.Y.md` (seções `### Novo`, `### Melhorado`, `### Corrigido`) e enviar a tag `vX.Y`. O GitHub Actions compila, assina e cria a release com o APK e o `latest.json`,
 que o app consulta para se atualizar.
+
+## Criador
+
+**Belin7z** · [GitHub](https://github.com/Belin7z) · Instagram [@vdb.belin7z](https://instagram.com/vdb.belin7z)
