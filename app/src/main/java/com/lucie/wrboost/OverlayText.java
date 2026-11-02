@@ -62,6 +62,11 @@ public final class OverlayText {
             item(b, "BAT", s.battPct + "%" + (s.charging ? " +" : "") + " " + String.format(us, "%.0f°C", s.tempC),
                     tempColor(s.tempC, 38, 43), horizontal);
         }
+        if (p.getBoolean("ov_ping", false)) {
+            int pg = Monitor.pingMs;
+            item(b, "PING", pg < 0 ? "--" : pg + " ms" + (Monitor.lossPct > 0 ? " · " + Monitor.lossPct + "%" : ""),
+                    pg < 0 ? WHITE : pg >= 120 ? BAD : pg >= 60 ? WARN : OK, horizontal);
+        }
         if (b.length() == 0) b.append("Nenhum item selecionado");
         return b;
     }

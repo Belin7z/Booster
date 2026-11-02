@@ -24,6 +24,24 @@ public final class Profiles {
         return p(c).getInt("gp_clean_" + pkg, -1);
     }
 
+    // Brilho em % durante o jogo; -1 não mexe.
+    public static int rawBright(Context c, String pkg) {
+        return pkg == null ? -1 : p(c).getInt("gp_bright_" + pkg, -1);
+    }
+
+    // Taxa de tela travada durante o jogo (Hz); -1 não mexe.
+    public static int rawHz(Context c, String pkg) {
+        return pkg == null ? -1 : p(c).getInt("gp_hz_" + pkg, -1);
+    }
+
+    public static void setBright(Context c, String pkg, int v) {
+        p(c).edit().putInt("gp_bright_" + pkg, v).apply();
+    }
+
+    public static void setHz(Context c, String pkg, int v) {
+        p(c).edit().putInt("gp_hz_" + pkg, v).apply();
+    }
+
     public static int level(Context c, String pkg) {
         int l = pkg == null ? -1 : rawLevel(c, pkg);
         if (l < 0) return Booster.level(c);

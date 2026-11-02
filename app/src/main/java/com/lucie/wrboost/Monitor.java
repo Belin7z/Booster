@@ -21,6 +21,7 @@ public final class Monitor {
         public int stutters;
         public int hz = 60;
         public String cause;
+        public float trend = Float.NaN;
     }
 
     public static int refreshRate(Context c) {
@@ -73,6 +74,14 @@ public final class Monitor {
     private static int lowN;
     private static final List<Integer> fpsSer = new ArrayList<>(), cpuSer = new ArrayList<>();
 
+    public static volatile long takeMs;
+    public static volatile int pingMs = -1, lossPct;
+    private static volatile boolean pinging;
+    private static long pingSum, pingN, lossSum;
+    private static int pingMaxS, badNet;
+    private static long lastNetAlert, lastPredict;
+    private static final ArrayDeque<float[]> trendBuf = new ArrayDeque<>();
+
     private static volatile String gamePkg, fgGame, layerPkg;
     private static int awayTicks;
 
@@ -106,8 +115,10 @@ public final class Monitor {
             long t0 = System.currentTimeMillis();
             try {
                 publish(take());
-            } catch (Throwable ignored) {
+            } catch (Throwable e) {
+                CrashLog.log(app, "Monitor", CrashLog.stack(e));
             }
+            takeMs = System.currentTimeMillis() - t0;
             long wait = 1000 - (System.currentTimeMillis() - t0);
             if (wait > 0) {
                 try {
@@ -143,10 +154,84 @@ public final class Monitor {
         s.gpu = tm.gpu;
         s.cpuSrc = tm.cpuSrc;
 
+        s.trend = trend(s);
+        if (tick % (activeGame() != null ? 6 : 30) == 2) probeNet();
         readFps(s);
         s.cause = cause(s);
         heatAlert(s);
         return s;
+    }
+
+    // Variação da temperatura da CPU em °C por minuto, pela média dos últimos ~90 s.
+    private static float trend(Sample s) {
+        if (Float.isNaN(s.cpu)) return Float.NaN;
+        trendBuf.addLast(new float[]{s.t / 1000f, s.cpu});
+        while (!trendBuf.isEmpty() && s.t / 1000f - trendBuf.peekFirst()[0] > 90) trendBuf.pollFirst();
+        int n = trendBuf.size();
+        if (n < 30) return Float.NaN;
+        double sx = 0, sy = 0, sxy = 0, sxx = 0;
+        float t0 = trendBuf.peekFirst()[0];
+        for (float[] p : trendBuf) {
+            double x = p[0] - t0;
+            sx += x;
+            sy += p[1];
+            sxy += x * p[1];
+            sxx += x * x;
+        }
+        double den = n * sxx - sx * sx;
+        return den == 0 ? Float.NaN : (float) (60.0 * (n * sxy - sx * sy) / den);
+    }
+
+    // Mede o ping com conexões TCP curtas, fora da thread do monitor.
+    private static void probeNet() {
+        if (pinging) return;
+        pinging = true;
+        new Thread(() -> {
+            try {
+                int ok = 0, sum = 0, max = 0;
+                for (int i = 0; i < 4; i++) {
+                    long t0 = System.nanoTime();
+                    try (java.net.Socket so = new java.net.Socket()) {
+                        so.connect(new java.net.InetSocketAddress("1.1.1.1", 443), 1200);
+                        int ms = (int) ((System.nanoTime() - t0) / 1_000_000);
+                        ok++;
+                        sum += ms;
+                        max = Math.max(max, ms);
+                    } catch (Exception ignored) {
+                    }
+                    try {
+                        Thread.sleep(80);
+                    } catch (InterruptedException e) {
+                        break;
+                    }
+                }
+                pingMs = ok == 0 ? -1 : sum / ok;
+                lossPct = (4 - ok) * 25;
+                synchronized (Monitor.class) {
+                    if (sessionOn) {
+                        lossSum += lossPct;
+                        pingN++;
+                        if (ok > 0) pingSum += pingMs;
+                        pingMaxS = Math.max(pingMaxS, max);
+                    }
+                }
+                netAlert();
+            } finally {
+                pinging = false;
+            }
+        }).start();
+    }
+
+    private static void netAlert() {
+        if (activeGame() == null || !prefs().getBoolean("net_alert", true)) return;
+        boolean bad = pingMs < 0 || pingMs >= 120 || lossPct >= 25;
+        badNet = bad ? badNet + 1 : 0;
+        long now = System.currentTimeMillis();
+        if (badNet >= 2 && now - lastNetAlert > 180_000) {
+            lastNetAlert = now;
+            notifyInfo("Rede instável no jogo", (pingMs < 0 ? "Sem resposta da internet" : "Ping " + pingMs + " ms, perda " + lossPct + "%")
+                    + ". Chegue mais perto do roteador ou troque a rede.");
+        }
     }
 
     private static Parsers.Temps readZones() {
@@ -237,6 +322,7 @@ public final class Monitor {
                 notifyInfo("Booster otimizou o jogo", r.forced + " apps fechados, " + (r.freedBytes / 1048576) + " MB liberados");
             }
             if (Profiles.dnd(app, pkg)) Booster.enableDnd(app);
+            GameMode.apply(app, pkg);
         }).start();
     }
 
@@ -252,6 +338,28 @@ public final class Monitor {
         }
     }
 
+    // Resumo ao sair do jogo, em uma notificação que fica até ser dispensada.
+    private static void notifySummary(Reports.Record r, long sec) {
+        java.util.Locale us = java.util.Locale.US;
+        StringBuilder b = new StringBuilder();
+        if (r.measured) b.append("FPS médio ").append(r.fpsAvg).append(" / ").append(r.target).append(" · nota ").append(Reports.grade(r.score())).append('\n');
+        if (r.cpuMax > 0) b.append("CPU máx ").append(String.format(us, "%.0f", r.cpuMax)).append("°C · ");
+        b.append("bateria máx ").append(String.format(us, "%.0f", r.battTempMax)).append("°C\n");
+        b.append("RAM máx ").append(String.format(us, "%.1f", r.ramMaxMb / 1024f)).append(" GB · bateria ").append(r.battEnd - r.battStart).append("%");
+        if (r.pingAvg > 0) b.append("\nPing médio ").append(r.pingAvg).append(" ms, perda ").append(r.lossPct).append('%');
+        try {
+            android.app.NotificationManager nm = app.getSystemService(android.app.NotificationManager.class);
+            nm.createNotificationChannel(new android.app.NotificationChannel("summary", "Resumo da partida", android.app.NotificationManager.IMPORTANCE_DEFAULT));
+            android.app.PendingIntent pi = android.app.PendingIntent.getActivity(app, 3, new android.content.Intent(app, MainActivity.class),
+                    android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT);
+            nm.notify(3, new android.app.Notification.Builder(app, "summary").setSmallIcon(R.drawable.ic_bolt)
+                    .setContentTitle(r.label + " · " + (sec / 60) + " min").setContentText(b.toString().replace('\n', ' '))
+                    .setStyle(new android.app.Notification.BigTextStyle().bigText(b.toString()))
+                    .setContentIntent(pi).setAutoCancel(true).build());
+        } catch (Exception ignored) {
+        }
+    }
+
     public static int heatLimit(Context c) {
         return c.getSharedPreferences("wr", Context.MODE_PRIVATE).getInt("heat_alert", 46);
     }
@@ -261,6 +369,12 @@ public final class Monitor {
         int lim = heatLimit(app);
         if (lim <= 0 || activeGame() == null) return;
         long now = System.currentTimeMillis();
+        if (prefs().getBoolean("heat_predict", true) && !Float.isNaN(s.trend) && !Float.isNaN(s.cpu) && s.cpu < lim
+                && s.trend >= 0.6f && (lim - s.cpu) / s.trend <= 4 && now - lastPredict > 180_000) {
+            lastPredict = now;
+            notifyInfo("Esquentando rápido: CPU em " + Math.round(s.cpu) + "°C (+" + String.format(java.util.Locale.US, "%.1f", s.trend) + "°C/min)",
+                    "Deve chegar a " + lim + "°C em cerca de " + Math.max(1, Math.round((lim - s.cpu) / s.trend)) + " min. Reduza gráficos ou sombras agora para manter o FPS.");
+        }
         if (now - lastAlert < 120_000) return;
         if (!Float.isNaN(s.cpu) && s.cpu >= lim) {
             lastAlert = now;
@@ -376,6 +490,9 @@ public final class Monitor {
         lowN = 0;
         dropHeat = dropRam = dropOther = 0;
         cpuSer.clear();
+        fpsSer.clear();
+        pingSum = pingN = lossSum = 0;
+        pingMaxS = 0;
         gamePkg = pkg;
         awayTicks = 0;
         Sample l = latest;
@@ -443,6 +560,9 @@ public final class Monitor {
         r.battTempMax = battMax;
         r.ramMaxMb = (int) (ramMax / 1048576);
         r.ramAvgPct = ticksN > 0 ? (int) (ramPctSum / ticksN) : 0;
+        r.pingAvg = pingN > 0 ? (int) (pingSum / pingN) : 0;
+        r.pingMax = pingMaxS;
+        r.lossPct = pingN > 0 ? (int) (lossSum / pingN) : 0;
         r.fpsSeries = shrink(fpsSer, 90);
         r.cpuSeries = shrink(cpuSer, 90);
         if (sec >= 20) Reports.add(app, r);
@@ -464,6 +584,9 @@ public final class Monitor {
         b.append("Tempo com limitação térmica: ").append(throttleSec).append(" s");
         String sum = b.toString();
         prefs().edit().putString("last", sum).apply();
+        final Context a = app;
+        new Thread(() -> GameMode.restore(a)).start();
+        if (sec >= 20 && prefs().getBoolean("post_summary", true)) notifySummary(r, sec);
         return sum;
     }
 }

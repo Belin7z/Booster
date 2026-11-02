@@ -28,12 +28,21 @@ public class OverlayService extends Service {
     private TextView view;
     private GamePanel panel;
     private final Handler h = new Handler(Looper.getMainLooper());
+    private int ticks;
     private final Runnable tick = new Runnable() {
         @Override
         public void run() {
             update();
             if (panel == null) panel = new GamePanel(OverlayService.this);
             panel.tick();
+            if (++ticks % 3 == 0) Diag.sample();
+            if (ticks % 30 == 0) {
+                final android.content.Context app = getApplicationContext();
+                new Thread(() -> {
+                    if (StatsWidget.has(app)) StatsWidget.refresh(app);
+                    Updater.autoCheck(app);
+                }).start();
+            }
             h.postDelayed(this, 1000);
         }
     };
@@ -53,6 +62,11 @@ public class OverlayService extends Service {
             return START_NOT_STICKY;
         }
         if (!acquired) {
+            // Sem partida em andamento, desfaz o que o modo jogo possa ter deixado (ex.: o app foi encerrado em jogo).
+            if (!Monitor.sessionActive()) {
+                final android.content.Context app = getApplicationContext();
+                new Thread(() -> GameMode.restore(app)).start();
+            }
             Monitor.acquire(this);
             acquired = true;
         }

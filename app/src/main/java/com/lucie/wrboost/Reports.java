@@ -27,6 +27,7 @@ public final class Reports {
         public int durSec, fpsAvg, fpsMin, fpsMax, low1, stutters, stablePct, hz, target, battStart, battEnd, throttleSec, dropHeatSec, dropRamSec, dropOtherSec;
         public float cpuMax, cpuAvg, gpuMax, battTempMax;
         public int ramMaxMb, ramAvgPct;
+        public int pingAvg, pingMax, lossPct;
         public int[] fpsSeries = new int[0], cpuSeries = new int[0];
         public boolean measured;
 
@@ -45,7 +46,8 @@ public final class Reports {
                     .put("fn", fpsMin).put("fx", fpsMax).put("lo", low1).put("st", stutters).put("sb", stablePct)
                     .put("hz", hz).put("tg", target).put("b0", battStart).put("b1", battEnd).put("th", throttleSec)
                     .put("cx", cpuMax).put("ca", cpuAvg).put("gx", gpuMax).put("bx", battTempMax)
-                    .put("dh", dropHeatSec).put("dr", dropRamSec).put("do", dropOtherSec).put("rm", ramMaxMb).put("ra", ramAvgPct).put("ms", measured);
+                    .put("dh", dropHeatSec).put("dr", dropRamSec).put("do", dropOtherSec).put("rm", ramMaxMb).put("ra", ramAvgPct).put("ms", measured)
+                    .put("pg", pingAvg).put("px", pingMax).put("pl", lossPct);
             o.put("fs", arr(fpsSeries)).put("cs", arr(cpuSeries));
             return o;
         }
@@ -77,6 +79,9 @@ public final class Reports {
             r.dropOtherSec = o.optInt("do");
             r.ramAvgPct = o.optInt("ra");
             r.measured = o.optBoolean("ms");
+            r.pingAvg = o.optInt("pg");
+            r.pingMax = o.optInt("px");
+            r.lossPct = o.optInt("pl");
             r.fpsSeries = ints(o.optJSONArray("fs"));
             r.cpuSeries = ints(o.optJSONArray("cs"));
             return r;
