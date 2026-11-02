@@ -17,6 +17,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Switch;
@@ -32,7 +33,8 @@ public class MainActivity extends Activity {
     private static final int OK = 0xFF2ECC71, WARN = 0xFFF5A623, BAD = 0xFFFF5252;
 
     private final List<View> pages = new ArrayList<>();
-    private final List<String> pageNames = new ArrayList<>(), pageIcons = new ArrayList<>();
+    private final List<String> pageNames = new ArrayList<>();
+    private final List<Integer> pageIcons = new ArrayList<>();
     private final List<TextView> navItems = new ArrayList<>();
     private FrameLayout content;
     private LinearLayout drawer;
@@ -79,13 +81,15 @@ public class MainActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setPadding((int) dp(4), (int) dp(4), (int) dp(16), (int) dp(4));
-        TextView menu = text("≡", 30, TXT, true);
-        menu.setGravity(Gravity.CENTER);
+        ImageView menu = new ImageView(this);
+        menu.setImageDrawable(icon(R.drawable.ic_menu, TXT));
+        menu.setPadding((int) dp(14), (int) dp(14), (int) dp(14), (int) dp(14));
         menu.setOnClickListener(v -> toggleDrawer(true));
         bar.addView(menu, new LinearLayout.LayoutParams((int) dp(52), (int) dp(48)));
         tvTitle = text("", 20, TXT, true);
         bar.addView(tvTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        tvDot = text("● Shizuku", 12, MUT, false);
+        tvDot = text("Shizuku", 12, MUT, false);
+        tvDot.setCompoundDrawablePadding((int) dp(6));
         bar.addView(tvDot);
         main.addView(bar);
 
@@ -93,7 +97,7 @@ public class MainActivity extends Activity {
         main.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         // Início
-        LinearLayout home = page("Início", "🏠");
+        LinearLayout home = page("Início", R.drawable.ic_home);
         gauge = new GaugeView(this);
         home.addView(gauge, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) dp(200)));
         LinearLayout r1 = new LinearLayout(this);
@@ -106,11 +110,13 @@ public class MainActivity extends Activity {
         tvTip = text("", 14, TXT, false);
         tipCard.addView(tvTip);
         home.addView(tipCard);
-        btnPlay = button("🎮  Jogar Wild Rift", 0xFF4DA3FF, 0xFF04101F);
+        btnPlay = button("Jogar Wild Rift", 0xFF4DA3FF, 0xFF04101F);
+        withIcon(btnPlay, R.drawable.ic_play, 0xFF04101F);
         btnPlay.setOnClickListener(v -> play());
         home.addView(btnPlay, btnParams(56));
         LinearLayout acts = new LinearLayout(this);
-        btnBoost = button("🚀 Liberar RAM", 0xFF1D2A4A, TXT);
+        btnBoost = button("Liberar RAM", 0xFF1D2A4A, TXT);
+        withIcon(btnBoost, R.drawable.ic_memory, TXT);
         btnBoost.setTextSize(14);
         btnBoost.setOnClickListener(v -> boostOnly());
         btnMonitor = button("", 0xFF1D2A4A, TXT);
@@ -130,7 +136,7 @@ public class MainActivity extends Activity {
         home.addView(tvResult);
 
         // Desempenho
-        LinearLayout perf = page("Desempenho", "📈");
+        LinearLayout perf = page("Desempenho", R.drawable.ic_chart);
         gFps = new GraphView(this, "FPS (últimos 2 min)", 0xFF4DA3FF, 0, 60);
         gCpu = new GraphView(this, "Temperatura da CPU °C", 0xFFFF7A59, 30, 50);
         perf.addView(gFps, graphParams());
@@ -148,7 +154,7 @@ public class MainActivity extends Activity {
         perf.addView(info);
 
         // Modo avançado
-        LinearLayout adv = page("Modo avançado", "🔓");
+        LinearLayout adv = page("Modo avançado", R.drawable.ic_lock_open);
         LinearLayout advCard = card();
         advCard.addView(text("Shizuku", 15, TXT, true));
         tvShizuku = text("", 13, MUT, false);
@@ -161,7 +167,7 @@ public class MainActivity extends Activity {
         adv.addView(text("Com o Shizuku o Booster lê FPS e temperatura de CPU/GPU, ativa o Game Mode e faz a limpeza profunda.", 12, MUT, false));
 
         // Atualizações
-        LinearLayout up = page("Atualizações", "🔄");
+        LinearLayout up = page("Atualizações", R.drawable.ic_download);
         LinearLayout upCard = card();
         tvUpdate = text("Versão instalada: " + Updater.installedName(this), 13, MUT, false);
         upCard.addView(tvUpdate);
@@ -172,19 +178,20 @@ public class MainActivity extends Activity {
         up.addView(upCard);
 
         // Sessão
-        LinearLayout ses = page("Sessão", "📊");
+        LinearLayout ses = page("Sessão", R.drawable.ic_timer);
         LinearLayout last = card();
         last.addView(text("Resumo da última sessão", 15, TXT, true));
         tvLast = text(prefs.getString("last", "Nenhuma sessão ainda."), 13, MUT, false);
         last.addView(tvLast);
         ses.addView(last);
-        Button end = button("■  Encerrar sessão e ver resumo", 0xFF1D2A4A, TXT);
+        Button end = button("Encerrar sessão", 0xFF1D2A4A, TXT);
+        withIcon(end, R.drawable.ic_stop, TXT);
         end.setTextSize(14);
         end.setOnClickListener(v -> endSession());
         ses.addView(end, btnParams(48));
 
         // Configurações
-        LinearLayout set = page("Configurações", "⚙️");
+        LinearLayout set = page("Configurações", R.drawable.ic_settings);
         set.addView(text("DURANTE O JOGO", 11, MUT, true));
         LinearLayout opts = card();
         swOverlay = sw(opts, "Monitor flutuante", "overlay", true);
@@ -202,23 +209,23 @@ public class MainActivity extends Activity {
         });
         swAggr = sw(opts, "Limpeza profunda (requer Shizuku)", "aggr", true);
         swAggr.setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("aggr", on).apply());
-        tvPos = rowItem(opts, "", v -> cyclePosition());
+        tvPos = rowItem(opts, "", R.drawable.ic_overlay, v -> cyclePosition());
         set.addView(opts);
         set.addView(text("PERMISSÕES", 11, MUT, true));
         LinearLayout perms = card();
-        tvOverlayPerm = rowItem(perms, "", v -> askOverlay());
-        rowItem(perms, "Pop-up em segundo plano (Xiaomi) ›", v -> openMiuiPerms());
-        rowItem(perms, "Bateria sem restrições ›", v -> openAction(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+        tvOverlayPerm = rowItem(perms, "", R.drawable.ic_check, v -> askOverlay());
+        rowItem(perms, "Pop-up em segundo plano (Xiaomi)", R.drawable.ic_overlay, v -> openMiuiPerms());
+        rowItem(perms, "Bateria sem restrições", R.drawable.ic_battery, v -> openAction(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
         set.addView(perms);
         set.addView(text("No HyperOS, para o monitor aparecer sobre o jogo, ative \"Exibir pop-ups durante execução em segundo plano\" e \"Exibir na tela de bloqueio\" nas permissões do Booster.", 12, MUT, false));
 
         // Atalhos
-        LinearLayout sc = page("Atalhos e dicas", "🧰");
+        LinearLayout sc = page("Atalhos e dicas", R.drawable.ic_tools);
         LinearLayout sh = card();
-        rowItem(sh, "🔋 Modo desempenho / bateria", v -> openAction(Settings.ACTION_BATTERY_SAVER_SETTINGS));
-        rowItem(sh, "🛠 Opções do desenvolvedor", v -> openAction(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS));
-        rowItem(sh, "💾 Armazenamento", v -> openAction(Settings.ACTION_INTERNAL_STORAGE_SETTINGS));
-        rowItem(sh, "📶 Wi-Fi", v -> openAction(Settings.ACTION_WIFI_SETTINGS));
+        rowItem(sh, "Modo desempenho / bateria", R.drawable.ic_battery, v -> openAction(Settings.ACTION_BATTERY_SAVER_SETTINGS));
+        rowItem(sh, "Opções do desenvolvedor", R.drawable.ic_code, v -> openAction(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS));
+        rowItem(sh, "Armazenamento", R.drawable.ic_storage, v -> openAction(Settings.ACTION_INTERNAL_STORAGE_SETTINGS));
+        rowItem(sh, "Wi-Fi", R.drawable.ic_wifi, v -> openAction(Settings.ACTION_WIFI_SETTINGS));
         sc.addView(sh);
         sc.addView(text("A limpeza profunda fecha apps de terceiros (menos mensagens e sistema); eles não "
                 + "notificam até serem abertos de novo. Para mais RAM de verdade: Memória estendida em 3 GB "
@@ -234,13 +241,29 @@ public class MainActivity extends Activity {
         drawer.setOrientation(LinearLayout.VERTICAL);
         drawer.setBackgroundColor(CARD);
         drawer.setPadding((int) dp(12), (int) dp(44), (int) dp(12), (int) dp(16));
-        drawer.addView(text("⚡ Booster", 22, TXT, true));
-        drawer.addView(text("v" + Updater.installedName(this), 12, MUT, false));
+        LinearLayout brand = new LinearLayout(this);
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView logo = new ImageView(this);
+        logo.setImageDrawable(icon(R.drawable.ic_bolt, 0xFF04101F));
+        logo.setBackground(round(0xFF4DA3FF, 10));
+        logo.setPadding((int) dp(8), (int) dp(8), (int) dp(8), (int) dp(8));
+        brand.addView(logo, new LinearLayout.LayoutParams((int) dp(40), (int) dp(40)));
+        LinearLayout names = new LinearLayout(this);
+        names.setOrientation(LinearLayout.VERTICAL);
+        names.setPadding((int) dp(12), 0, 0, 0);
+        names.addView(text("Booster", 18, TXT, true));
+        names.addView(text("Versão " + Updater.installedName(this), 12, MUT, false));
+        brand.addView(names);
+        drawer.addView(brand);
         View gap = new View(this);
-        drawer.addView(gap, new LinearLayout.LayoutParams(1, (int) dp(16)));
+        gap.setBackgroundColor(0xFF22304F);
+        LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) dp(1));
+        gp.setMargins(0, (int) dp(20), 0, (int) dp(12));
+        drawer.addView(gap, gp);
         for (int i = 0; i < pages.size(); i++) {
             final int idx = i;
-            TextView it = text(pageIcons.get(i) + "  " + pageNames.get(i), 16, TXT, false);
+            TextView it = text(pageNames.get(i), 15, TXT, false);
+            it.setCompoundDrawablePadding((int) dp(14));
             it.setPadding((int) dp(14), (int) dp(13), (int) dp(14), (int) dp(13));
             it.setOnClickListener(v -> {
                 showPage(idx);
@@ -261,7 +284,7 @@ public class MainActivity extends Activity {
         if (System.currentTimeMillis() - prefs.getLong("lastCheck", 0) > 6 * 3600_000L) checkUpdate(false);
     }
 
-    private LinearLayout page(String name, String icon) {
+    private LinearLayout page(String name, int icon) {
         ScrollView sv = new ScrollView(this);
         sv.setVisibility(View.GONE);
         LinearLayout l = new LinearLayout(this);
@@ -280,8 +303,10 @@ public class MainActivity extends Activity {
         for (int i = 0; i < pages.size(); i++) {
             pages.get(i).setVisibility(i == idx ? View.VISIBLE : View.GONE);
             TextView it = navItems.get(i);
-            it.setBackground(i == idx ? round(0xFF1D2A4A, 12) : null);
-            it.setTextColor(i == idx ? 0xFF4DA3FF : TXT);
+            int col = i == idx ? 0xFF4DA3FF : 0xFFB8C4E0;
+            it.setBackground(i == idx ? round(0xFF1A2745, 10) : null);
+            it.setTextColor(col);
+            it.setCompoundDrawablesRelativeWithIntrinsicBounds(icon(pageIcons.get(i), col), null, null, null);
         }
         tvTitle.setText(pageNames.get(idx));
     }
@@ -304,9 +329,11 @@ public class MainActivity extends Activity {
         else super.onBackPressed();
     }
 
-    private TextView rowItem(LinearLayout parent, String label, View.OnClickListener l) {
-        TextView t = text(label, 15, TXT, false);
-        t.setPadding(0, (int) dp(11), 0, (int) dp(11));
+    private TextView rowItem(LinearLayout parent, String label, int ic, View.OnClickListener l) {
+        TextView t = text(label, 14, TXT, false);
+        t.setCompoundDrawablePadding((int) dp(14));
+        t.setCompoundDrawablesRelativeWithIntrinsicBounds(icon(ic, MUT), null, icon(R.drawable.ic_chevron, 0xFF4A5A80), null);
+        t.setPadding(0, (int) dp(12), 0, (int) dp(12));
         t.setOnClickListener(l);
         parent.addView(t);
         return t;
@@ -396,7 +423,7 @@ public class MainActivity extends Activity {
                 h.post(() -> {
                     pending = i;
                     if (i == null) {
-                        tvUpdate.setText("Versão instalada: " + Updater.installedName(this) + " ✅ (atualizado)");
+                        tvUpdate.setText("Versão instalada: " + Updater.installedName(this) + " (atualizado)");
                         btnUpdate.setText("Verificar atualizações");
                     } else {
                         tvUpdate.setText("Nova versão disponível: v" + i.name + "\n" + i.notes);
@@ -440,7 +467,7 @@ public class MainActivity extends Activity {
         tvCpu.setText(Float.isNaN(m.cpu) ? "n/d" : String.format(us, "%.1f°", m.cpu));
         tvCpu.setTextColor(Float.isNaN(m.cpu) ? TXT : m.cpu >= 50 ? BAD : m.cpu >= 43 ? WARN : OK);
         tvGpu.setText(Float.isNaN(m.gpu) ? "n/d" : String.format(us, "%.1f°", m.gpu));
-        tvBat.setText(s.battPct + "%" + (s.charging ? " ⚡" : ""));
+        tvBat.setText(s.battPct + "%" + (s.charging ? " +" : ""));
         tvFree.setText(SystemInfo.gb(s.storageFree) + " GB");
         tvFree.setTextColor(s.storageFree * 100 / Math.max(1, s.storageTotal) < 15 ? BAD : TXT);
 
@@ -457,37 +484,43 @@ public class MainActivity extends Activity {
     }
 
     private void updateChrome() {
-        btnMonitor.setText(OverlayService.running ? "? Parar monitor" : "?? Monitor flutuante");
-        tvPos.setText("Posi??o do monitor: " + POS[prefs.getInt("pos", 0) % POS.length] + " ?");
+        btnMonitor.setText(OverlayService.running ? "Parar monitor" : "Monitor flutuante");
+        withIcon(btnMonitor, OverlayService.running ? R.drawable.ic_stop : R.drawable.ic_overlay, TXT);
+        tvPos.setText("Posição do monitor: " + POS[prefs.getInt("pos", 0) % POS.length]);
         boolean ov = Settings.canDrawOverlays(this);
-        tvOverlayPerm.setText("Sobrepor a outros apps: " + (ov ? "? permitido" : "? negado (toque para permitir)"));
+        tvOverlayPerm.setText("Sobrepor a outros apps: " + (ov ? "permitido" : "negado, toque para permitir"));
         boolean ok = Shell.granted();
-        tvDot.setText(ok ? "? Shizuku ativo" : "? Shizuku off");
+        tvDot.setText(ok ? "Shizuku ativo" : "Shizuku inativo");
         tvDot.setTextColor(ok ? OK : WARN);
+        GradientDrawable dot = new GradientDrawable();
+        dot.setShape(GradientDrawable.OVAL);
+        dot.setColor(ok ? OK : WARN);
+        dot.setBounds(0, 0, (int) dp(8), (int) dp(8));
+        tvDot.setCompoundDrawablesRelative(dot, null, null, null);
     }
 
     private String tip(Monitor.Sample m, boolean adv) {
         SystemInfo s = m.sys;
         StringBuilder t = new StringBuilder();
         boolean hot = (!Float.isNaN(m.cpu) && m.cpu >= 48) || s.tempC >= 43 || s.thermalStatus >= 2;
-        if (hot) t.append("🔥 Celular quente: o desempenho cai (throttling). Tire a capa, pare de carregar e espere esfriar.\n");
-        else if ((!Float.isNaN(m.cpu) && m.cpu >= 43) || s.tempC >= 40) t.append("🌡 Esquentando. Evite jogar carregando.\n");
-        if (s.charging && s.tempC >= 38) t.append("⚡ Carregando enquanto esquenta: desconecte o cabo para jogar.\n");
-        if (s.battPct < 20 && !s.charging) t.append("🔋 Bateria baixa reduz o desempenho. Carregue antes.\n");
-        if (s.ramUsedPct() >= 85) t.append("🧠 RAM muito cheia: toque em \"Liberar RAM agora\".\n");
-        if (s.storageFree * 100 / Math.max(1, s.storageTotal) < 15) t.append("💾 Menos de 15% de armazenamento livre.\n");
-        if (s.swapTotal == 0) t.append("💡 Ative a Memória estendida (3 GB) nas configurações.\n");
-        if (m.fps >= 0 && m.fps < 45 && !hot) t.append("🎯 FPS baixo sem calor: reduza efeitos/sombras no jogo ou use Liberar RAM.\n");
-        if (m.fps >= 0 && !Float.isNaN(m.low1) && m.low1 < m.fps * 0.6f) t.append("📉 Muita oscilação (1% low baixo): prefira 60 FPS fixo e efeitos menores.\n");
-        if (!adv) t.append("🔓 Ative o modo avançado (Shizuku) para medir FPS e temperatura de CPU/GPU.\n");
-        if (t.length() == 0) t.append("✅ Tudo certo para jogar no gráfico alto estável.");
+        if (hot) t.append("Celular quente: o desempenho cai (throttling). Tire a capa, pare de carregar e espere esfriar.\n");
+        else if ((!Float.isNaN(m.cpu) && m.cpu >= 43) || s.tempC >= 40) t.append("Esquentando. Evite jogar carregando.\n");
+        if (s.charging && s.tempC >= 38) t.append("Carregando enquanto esquenta: desconecte o cabo para jogar.\n");
+        if (s.battPct < 20 && !s.charging) t.append("Bateria baixa reduz o desempenho. Carregue antes.\n");
+        if (s.ramUsedPct() >= 85) t.append("RAM muito cheia: toque em \"Liberar RAM agora\".\n");
+        if (s.storageFree * 100 / Math.max(1, s.storageTotal) < 15) t.append("Menos de 15% de armazenamento livre.\n");
+        if (s.swapTotal == 0) t.append("Ative a Memória estendida (3 GB) nas configurações.\n");
+        if (m.fps >= 0 && m.fps < 45 && !hot) t.append("FPS baixo sem calor: reduza efeitos/sombras no jogo ou use Liberar RAM.\n");
+        if (m.fps >= 0 && !Float.isNaN(m.low1) && m.low1 < m.fps * 0.6f) t.append("Muita oscilação (1% low baixo): prefira 60 FPS fixo e efeitos menores.\n");
+        if (!adv) t.append("Ative o modo avançado (Shizuku) para medir FPS e temperatura de CPU/GPU.\n");
+        if (t.length() == 0) t.append("Tudo certo para jogar no gráfico alto estável.");
         return t.toString().trim();
     }
 
     private void updateShizuku() {
         boolean inst = Shell.installed(this), run = Shell.running(), ok = Shell.granted();
         if (ok) {
-            tvShizuku.setText("✅ Ativo: FPS, CPU/GPU, Game Mode e limpeza profunda liberados.");
+            tvShizuku.setText("Ativo: FPS, CPU/GPU, Game Mode e limpeza profunda liberados.");
             btnShizuku.setVisibility(View.GONE);
             return;
         }
@@ -610,7 +643,7 @@ public class MainActivity extends Activity {
         t.setText(s);
         t.setTextSize(sp);
         t.setTextColor(color);
-        if (bold) t.setTypeface(t.getTypeface(), android.graphics.Typeface.BOLD);
+        if (bold) t.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
         t.setPadding(0, (int) dp(4), 0, (int) dp(4));
         return t;
     }
@@ -634,8 +667,10 @@ public class MainActivity extends Activity {
     private LinearLayout card() {
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
-        c.setBackground(round(CARD, 14));
-        int p = (int) dp(12);
+        GradientDrawable cg = round(CARD, 14);
+        cg.setStroke((int) dp(1), 0xFF1F2B48);
+        c.setBackground(cg);
+        int p = (int) dp(14);
         c.setPadding(p, p, p, p);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, (int) dp(8), 0, (int) dp(4));
@@ -676,6 +711,20 @@ public class MainActivity extends Activity {
             }
         });
         return t;
+    }
+
+    private android.graphics.drawable.Drawable icon(int res, int color) {
+        android.graphics.drawable.Drawable d = getDrawable(res).mutate();
+        d.setTint(color);
+        int sz = (int) dp(22);
+        d.setBounds(0, 0, sz, sz);
+        return d;
+    }
+
+    private void withIcon(Button b, int res, int color) {
+        b.setCompoundDrawablesRelative(icon(res, color), null, null, null);
+        b.setCompoundDrawablePadding((int) dp(10));
+        b.setPadding((int) dp(20), 0, (int) dp(20), 0);
     }
 
     private GradientDrawable round(int color, float r) {
