@@ -37,8 +37,9 @@ public class MonitorTile extends TileService {
         Tile t = getQsTile();
         if (t == null) return;
         t.setIcon(Icon.createWithResource(this, R.drawable.ic_bolt));
-        t.setLabel("Booster");
+        t.setLabel("Modo jogo");
         t.setState(on ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
+        if (android.os.Build.VERSION.SDK_INT >= 29) t.setSubtitle(on ? "Ligado" : "Desligado");
         t.updateTile();
     }
 }
