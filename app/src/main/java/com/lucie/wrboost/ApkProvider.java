@@ -13,8 +13,16 @@ import java.io.FileNotFoundException;
 
 // Entrega somente o update.apk do cache ao instalador do sistema.
 public class ApkProvider extends ContentProvider {
+    private static final String[] NAMES = {"/update.apk", "/report.png", "/historico.csv", "/historico.pdf"};
+
     private File file(Uri uri) {
-        return new File(getContext().getCacheDir(), "/report.png".equals(uri.getPath()) ? "report.png" : "update.apk");
+        String p = uri.getPath() == null ? "" : uri.getPath();
+        return new File(getContext().getCacheDir(), p.startsWith("/") ? p.substring(1) : p);
+    }
+
+    private boolean allowed(Uri uri) {
+        for (String n : NAMES) if (n.equals(uri.getPath())) return true;
+        return false;
     }
 
     @Override
@@ -24,21 +32,23 @@ public class ApkProvider extends ContentProvider {
 
     @Override
     public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
-        String p = uri.getPath();
-        if (!"r".equals(mode) || !("/update.apk".equals(p) || "/report.png".equals(p))) throw new FileNotFoundException();
+        if (!"r".equals(mode) || !allowed(uri) || !file(uri).exists()) throw new FileNotFoundException();
         return ParcelFileDescriptor.open(file(uri), ParcelFileDescriptor.MODE_READ_ONLY);
     }
 
     @Override
     public Cursor query(Uri uri, String[] projection, String selection, String[] args, String sort) {
         MatrixCursor c = new MatrixCursor(new String[]{OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE});
+        if (!allowed(uri)) return c;
         c.addRow(new Object[]{file(uri).getName(), file(uri).length()});
         return c;
     }
 
     @Override
     public String getType(Uri uri) {
-        return "/report.png".equals(uri.getPath()) ? "image/png" : "application/vnd.android.package-archive";
+        String p = uri.getPath() == null ? "" : uri.getPath();
+        return p.endsWith(".png") ? "image/png" : p.endsWith(".csv") ? "text/csv" : p.endsWith(".pdf") ? "application/pdf"
+                : "application/vnd.android.package-archive";
     }
 
     @Override
