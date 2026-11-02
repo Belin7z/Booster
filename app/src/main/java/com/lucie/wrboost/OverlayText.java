@@ -19,6 +19,9 @@ public final class OverlayText {
 
     // 0 = acompanhar a taxa atual da tela.
     public static int fpsTarget(SharedPreferences p, Monitor.Sample m) {
+        String g = Monitor.activeGame();
+        int gt = g == null ? 0 : p.getInt("gt_" + g, 0);
+        if (gt > 0) return gt;
         int t = p.getInt("fps_target", 0);
         return t > 0 ? t : m.hz;
     }

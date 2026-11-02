@@ -56,7 +56,7 @@ public class OverlayService extends Service {
         h.removeCallbacks(tick);
         h.post(tick);
         running = true;
-        return START_NOT_STICKY;
+        return getSharedPreferences("wr", MODE_PRIVATE).getBoolean("auto", true) ? START_STICKY : START_NOT_STICKY;
     }
 
     private void startForegroundCompat() {
@@ -67,7 +67,7 @@ public class OverlayService extends Service {
         Notification n = new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(R.drawable.ic_bolt)
                 .setContentTitle("Booster")
-                .setContentText("Monitor de RAM e temperatura ativo")
+                .setContentText("Monitor e detecção de jogos ativos")
                 .addAction(new Notification.Action.Builder(null, "Parar", pi).build())
                 .setOngoing(true)
                 .build();
@@ -113,7 +113,10 @@ public class OverlayService extends Service {
         if (view == null) return;
         Monitor.Sample m = Monitor.latest;
         if (m == null) return;
-        view.setText(OverlayText.build(m, getSharedPreferences("wr", MODE_PRIVATE)));
+        android.content.SharedPreferences p = getSharedPreferences("wr", MODE_PRIVATE);
+        boolean show = !p.getBoolean("ov_only_game", false) || Monitor.sessionActive() || Monitor.activeGame() != null;
+        view.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
+        if (show) view.setText(OverlayText.build(m, p));
     }
 
     @Override

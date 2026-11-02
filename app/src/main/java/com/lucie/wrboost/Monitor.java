@@ -63,11 +63,16 @@ public final class Monitor {
 
     private static boolean sessionOn;
     private static long sStart;
-    private static long fpsSum, fpsN, ramMax, throttleSec;
-    private static int fpsMin = Integer.MAX_VALUE, stutterBase;
-    private static float cpuMax, battMax;
+    private static long fpsSum, fpsN, ramMax, throttleSec, stableSec, ramPctSum, ticksN;
+    private static int fpsMin = Integer.MAX_VALUE, fpsMaxS, stutterBase, battStart, lastBatt, hzSeen;
+    private static float cpuMax, gpuMax, battMax, cpuSum;
+    private static long cpuN;
     private static float lowSum;
     private static int lowN;
+    private static final List<Integer> fpsSer = new ArrayList<>(), cpuSer = new ArrayList<>();
+
+    private static volatile String gamePkg, fgGame, layerPkg;
+    private static int awayTicks;
 
     private Monitor() {
     }
@@ -119,6 +124,7 @@ public final class Monitor {
         tick++;
         Adb.maybeReconnect(app);
         s.hz = refreshRate(app);
+        autoDetect();
 
         Parsers.Temps tm = readZones();
         if ((Float.isNaN(tm.cpu) || Float.isNaN(tm.gpu)) && Shell.granted()) {
@@ -163,13 +169,63 @@ public final class Monitor {
         }
     }
 
+    // Jogo cujo FPS está sendo medido agora: o da sessão ou o que está em primeiro plano.
+    public static String activeGame() {
+        String g = gamePkg;
+        return g != null ? g : fgGame;
+    }
+
+    private static android.content.SharedPreferences prefs() {
+        return app.getSharedPreferences("wr", Context.MODE_PRIVATE);
+    }
+
+    private static void autoDetect() {
+        if (tick % 3 != 1) return;
+        String fg = Games.foreground(app);
+        if (fg == null) return;
+        boolean isGame = Games.isGame(app, fg);
+        fgGame = isGame ? fg : null;
+        boolean auto = prefs().getBoolean("auto", true);
+        if (isGame) {
+            awayTicks = 0;
+            if (sessionOn && gamePkg == null) gamePkg = fg;
+            if (auto && (!sessionOn || !fg.equals(gamePkg))) {
+                if (sessionOn) endSession();
+                beginAuto(fg);
+            }
+        } else if (sessionOn && !fg.equals(app.getPackageName())) {
+            awayTicks += 3;
+            if (auto && awayTicks >= 30) {
+                endSession();
+                Booster.restoreDnd(app);
+            }
+        }
+    }
+
+    private static void beginAuto(String pkg) {
+        startSession(pkg);
+        final android.content.SharedPreferences p = prefs();
+        if (p.getBoolean("auto_boost", true)) {
+            new Thread(() -> {
+                Booster.boost(app, p.getBoolean("aggr", true) && Shell.granted(), pkg);
+                Booster.gameModePerformance(pkg);
+                if (p.getBoolean("dnd", true)) Booster.enableDnd(app);
+            }).start();
+        }
+    }
+
     private static void readFps(Sample s) {
-        String pkg = Booster.gamePackage(app);
+        String pkg = activeGame();
         if (pkg == null || !Shell.granted()) {
             tracker.reset();
             return;
         }
         long now = System.currentTimeMillis();
+        if (!pkg.equals(layerPkg)) {
+            layerPkg = pkg;
+            layer = null;
+            tracker.reset();
+        }
         if (layer == null) {
             if (now - layerCheck < 3000) return;
             layerCheck = now;
@@ -197,13 +253,26 @@ public final class Monitor {
         if (sessionOn) {
             long used = s.sys.ramTotal - s.sys.ramAvail;
             ramMax = Math.max(ramMax, used);
-            if (!Float.isNaN(s.cpu)) cpuMax = Math.max(cpuMax, s.cpu);
+            ramPctSum += s.sys.ramUsedPct();
+            ticksN++;
+            lastBatt = s.sys.battPct;
+            hzSeen = s.hz;
+            if (!Float.isNaN(s.cpu)) {
+                cpuMax = Math.max(cpuMax, s.cpu);
+                cpuSum += s.cpu;
+                cpuN++;
+            }
+            if (!Float.isNaN(s.gpu)) gpuMax = Math.max(gpuMax, s.gpu);
             battMax = Math.max(battMax, s.sys.tempC);
             if (s.sys.thermalStatus >= 2) throttleSec++;
+            fpsSer.add(s.fps);
+            cpuSer.add(Float.isNaN(s.cpu) ? -1 : Math.round(s.cpu * 10));
             if (s.fps > 0) {
                 fpsSum += s.fps;
                 fpsN++;
                 fpsMin = Math.min(fpsMin, s.fps);
+                fpsMaxS = Math.max(fpsMaxS, s.fps);
+                if (s.fps >= 0.9f * OverlayText.fpsTarget(prefs(), s)) stableSec++;
                 if (!Float.isNaN(s.low1)) {
                     lowSum += s.low1;
                     lowN++;
@@ -223,13 +292,20 @@ public final class Monitor {
         return a;
     }
 
-    public static synchronized void startSession() {
+    public static synchronized void startSession(String pkg) {
         sessionOn = true;
         sStart = System.currentTimeMillis();
-        fpsSum = fpsN = ramMax = throttleSec = 0;
+        fpsSum = fpsN = ramMax = throttleSec = stableSec = ramPctSum = ticksN = cpuN = 0;
         fpsMin = Integer.MAX_VALUE;
-        cpuMax = battMax = lowSum = 0;
+        fpsMaxS = 0;
+        cpuMax = gpuMax = battMax = lowSum = cpuSum = 0;
         lowN = 0;
+        fpsSer.clear();
+        cpuSer.clear();
+        gamePkg = pkg;
+        awayTicks = 0;
+        Sample l = latest;
+        battStart = lastBatt = l == null ? 0 : l.sys.battPct;
         stutterBase = tracker.stutters;
     }
 
@@ -237,23 +313,80 @@ public final class Monitor {
         return sessionOn;
     }
 
+    private static int[] shrink(List<Integer> src, int max) {
+        int n = src.size();
+        if (n == 0) return new int[0];
+        int out = Math.min(n, max);
+        int[] a = new int[out];
+        for (int i = 0; i < out; i++) {
+            int from = (int) ((long) i * n / out), to = Math.max(from + 1, (int) ((long) (i + 1) * n / out));
+            long sum = 0;
+            int c = 0;
+            for (int k = from; k < to && k < n; k++) {
+                if (src.get(k) >= 0) {
+                    sum += src.get(k);
+                    c++;
+                }
+            }
+            a[i] = c == 0 ? -1 : (int) (sum / c);
+        }
+        return a;
+    }
+
     public static synchronized String endSession() {
         if (!sessionOn) return null;
         sessionOn = false;
         long sec = (System.currentTimeMillis() - sStart) / 1000;
-        StringBuilder b = new StringBuilder();
-        b.append("Duração: ").append(sec / 60).append(" min ").append(sec % 60).append(" s\n");
-        if (fpsN > 0) {
-            b.append("FPS médio: ").append(fpsSum / fpsN).append(" · mínimo: ").append(fpsMin);
-            if (lowN > 0) b.append(" · 1% low médio: ").append(Math.round(lowSum / lowN));
-            b.append("\nTravadas (quadros > 50 ms): ").append(Math.max(0, tracker.stutters - stutterBase)).append('\n');
-        } else {
-            b.append("FPS: não medido (Shizuku inativo ou jogo não detectado)\n");
+        java.util.Locale us = java.util.Locale.US;
+
+        Reports.Record r = new Reports.Record();
+        r.pkg = gamePkg == null ? "desconhecido" : gamePkg;
+        r.label = gamePkg == null ? "Jogo não identificado" : Games.label(app, gamePkg);
+        r.start = sStart;
+        r.durSec = (int) sec;
+        r.measured = fpsN > 0;
+        if (r.measured) {
+            r.fpsAvg = (int) (fpsSum / fpsN);
+            r.fpsMin = fpsMin;
+            r.fpsMax = fpsMaxS;
+            r.low1 = lowN > 0 ? Math.round(lowSum / lowN) : r.fpsAvg;
+            r.stablePct = (int) (stableSec * 100 / fpsN);
         }
-        if (cpuMax > 0) b.append("CPU máx: ").append(String.format(java.util.Locale.US, "%.1f", cpuMax)).append("°C\n");
-        b.append("Bateria máx: ").append(String.format(java.util.Locale.US, "%.1f", battMax)).append("°C\n");
+        r.stutters = Math.max(0, tracker.stutters - stutterBase);
+        r.hz = hzSeen > 0 ? hzSeen : 60;
+        int pt = gamePkg == null ? 0 : prefs().getInt("gt_" + gamePkg, 0);
+        if (pt == 0) pt = prefs().getInt("fps_target", 0);
+        r.target = pt > 0 ? pt : r.hz;
+        r.battStart = battStart;
+        r.battEnd = lastBatt;
+        r.throttleSec = (int) throttleSec;
+        r.cpuMax = cpuMax;
+        r.cpuAvg = cpuN > 0 ? cpuSum / cpuN : 0;
+        r.gpuMax = gpuMax;
+        r.battTempMax = battMax;
+        r.ramMaxMb = (int) (ramMax / 1048576);
+        r.ramAvgPct = ticksN > 0 ? (int) (ramPctSum / ticksN) : 0;
+        r.fpsSeries = shrink(fpsSer, 90);
+        r.cpuSeries = shrink(cpuSer, 90);
+        if (sec >= 20) Reports.add(app, r);
+        gamePkg = null;
+
+        StringBuilder b = new StringBuilder();
+        b.append(r.label).append('\n');
+        b.append("Duração: ").append(sec / 60).append(" min ").append(sec % 60).append(" s\n");
+        if (r.measured) {
+            b.append("FPS médio: ").append(r.fpsAvg).append(" · mínimo: ").append(r.fpsMin);
+            if (lowN > 0) b.append(" · 1% low médio: ").append(r.low1);
+            b.append("\nTravadas (quadros > 50 ms): ").append(r.stutters).append('\n');
+        } else {
+            b.append("FPS: não medido (modo avançado inativo ou jogo não detectado)\n");
+        }
+        if (cpuMax > 0) b.append("CPU máx: ").append(String.format(us, "%.1f", cpuMax)).append("°C\n");
+        b.append("Bateria máx: ").append(String.format(us, "%.1f", battMax)).append("°C\n");
         b.append("RAM máx em uso: ").append(SystemInfo.gb(ramMax)).append(" GB\n");
         b.append("Tempo com limitação térmica: ").append(throttleSec).append(" s");
-        return b.toString();
+        String sum = b.toString();
+        prefs().edit().putString("last", sum).apply();
+        return sum;
     }
 }
