@@ -100,7 +100,7 @@ public final class Updater {
             for (byte b : md.digest()) hex.append(String.format("%02x", b));
             if (!hex.toString().equals(info.sha256)) throw new Exception("arquivo corrompido (hash diferente)");
 
-            Intent r = new Intent(ACTION_RESULT).setPackage(c.getPackageName());
+            Intent r = new Intent(c, InstallReceiver.class).setAction(ACTION_RESULT);
             PendingIntent p = PendingIntent.getBroadcast(c, id, r, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
             s.commit(p.getIntentSender());
         } catch (Exception e) {

@@ -13,7 +13,9 @@ public class InstallReceiver extends BroadcastReceiver {
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT);
             if (confirm != null) c.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        } else if (status != PackageInstaller.STATUS_SUCCESS) {
+        } else if (status == PackageInstaller.STATUS_SUCCESS) {
+            Toast.makeText(c, "Booster atualizado.", Toast.LENGTH_LONG).show();
+        } else {
             String msg = i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
             Toast.makeText(c, "Falha ao instalar: " + (msg == null ? status : msg), Toast.LENGTH_LONG).show();
         }
