@@ -5,13 +5,15 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-java@v4
         with:
@@ -39,32 +41,50 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk "Booster-v$VERSION.apk"
           sha256sum "Booster-v$VERSION.apk" | cut -d' ' -f1 > sha.txt
 
-      - name: Publish to Booster-releases
+      - name: Notas da versão
+        run: |
+          PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          RANGE="${PREV:+$PREV..}${GITHUB_REF_NAME}"
+          {
+            echo "## Novidades"
+            git log --no-merges --format='- %s' "$RANGE"
+          } > notes.md
+
+      - name: Publicar no Booster-releases
         env:
           DEPLOY_KEY: ${{ secrets.RELEASES_DEPLOY_KEY }}
-          NOTES: ${{ github.event.head_commit.message }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p ~/.ssh
           echo "$DEPLOY_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan github.com >> ~/.ssh/known_hosts
-          git clone git@github.com:Belin7z/Booster-releases.git rel
-          cp "Booster-v$VERSION.apk" rel/
-          cp "Booster-v$VERSION.apk" rel/Booster-latest.apk
+          git clone --depth 1 git@github.com:Belin7z/Booster-releases.git rel
+          cd rel
+          git rm -q --ignore-unmatch '*.apk'
+          cp "../Booster-v$VERSION.apk" .
           VERSION="$VERSION" python3 -c "
           import json, os
+          notes = [l[2:] for l in open('../notes.md').read().splitlines() if l.startswith('- ')]
           json.dump({
-            'versionCode': int(open('code.txt').read()),
+            'versionCode': int(open('../code.txt').read()),
             'versionName': os.environ['VERSION'],
             'apk': 'Booster-v' + os.environ['VERSION'] + '.apk',
-            'sha256': open('sha.txt').read().strip(),
-            'notes': os.environ.get('NOTES', '').strip()[:500]
-          }, open('rel/latest.json', 'w'), ensure_ascii=False, indent=2)
+            'sha256': open('../sha.txt').read().strip(),
+            'notes': '\n'.join(notes)[:500]
+          }, open('latest.json', 'w'), ensure_ascii=False, indent=2)
           "
-          cd rel
+          printf '# Booster\n\nVersão atual: %s\n\n[Baixar o APK](Booster-v%s.apk)\n\nDepois de instalar, as atualizações chegam dentro do próprio app.\n' "$VERSION" "$VERSION" > README.md
           git config user.name "booster-actions"
           git config user.email "actions@users.noreply.github.com"
+          git checkout -q --orphan limpo
           git add -A
-          git commit -m "Release v$VERSION"
-          git push origin HEAD:main
+          git commit -q -m "Booster $VERSION"
+          git push -f origin limpo:main
+
+      - name: Criar release no repositório do código
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "Booster-$GITHUB_REF_NAME.apk" \
+            --title "Booster ${GITHUB_REF_NAME#v}" --notes-file notes.md
