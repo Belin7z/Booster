@@ -27,6 +27,17 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name=".MonitorTile"
+            android:exported="true"
+            android:label="Booster"
+            android:icon="@android:drawable/ic_menu_info_details"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <receiver
             android:name=".InstallReceiver"
             android:exported="false" />
