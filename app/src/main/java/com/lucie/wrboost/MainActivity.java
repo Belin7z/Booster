@@ -16,18 +16,30 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
     private static final int BG = 0xFF0B1220, CARD = 0xFF141D33, TXT = 0xFFE8EEFC, MUT = 0xFF8FA0C7;
     private static final int OK = 0xFF2ECC71, WARN = 0xFFF5A623, BAD = 0xFFFF5252;
 
+    private final List<View> pages = new ArrayList<>();
+    private final List<String> pageNames = new ArrayList<>(), pageIcons = new ArrayList<>();
+    private final List<TextView> navItems = new ArrayList<>();
+    private FrameLayout content;
+    private LinearLayout drawer;
+    private View scrim;
+    private boolean drawerOpen;
+    private TextView tvTitle, tvDot, tvPos, tvOverlayPerm;
+    private Button btnMonitor;
     private GaugeView gauge;
     private GraphView gFps, gCpu;
     private TextView tvFps, tvLow, tvCpu, tvGpu, tvBat, tvFree;
@@ -57,100 +69,128 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
 
-        ScrollView sv = new ScrollView(this);
-        sv.setBackgroundColor(BG);
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        int p = (int) dp(16);
-        root.setPadding(p, (int) dp(28), p, (int) dp(24));
-        sv.addView(root);
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(BG);
+        LinearLayout main = new LinearLayout(this);
+        main.setOrientation(LinearLayout.VERTICAL);
+        main.setPadding(0, (int) dp(24), 0, 0);
+        root.addView(main, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        root.addView(text("⚡ Booster", 24, TXT, true));
-        root.addView(text("FPS, temperatura de CPU/GPU e RAM em tempo real", 13, MUT, false));
+        LinearLayout bar = new LinearLayout(this);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding((int) dp(4), (int) dp(4), (int) dp(16), (int) dp(4));
+        TextView menu = text("≡", 30, TXT, true);
+        menu.setGravity(Gravity.CENTER);
+        menu.setOnClickListener(v -> toggleDrawer(true));
+        bar.addView(menu, new LinearLayout.LayoutParams((int) dp(52), (int) dp(48)));
+        tvTitle = text("", 20, TXT, true);
+        bar.addView(tvTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        tvDot = text("● Shizuku", 12, MUT, false);
+        bar.addView(tvDot);
+        main.addView(bar);
 
+        content = new FrameLayout(this);
+        main.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+        // Início
+        LinearLayout home = page("Início", "🏠");
         gauge = new GaugeView(this);
-        root.addView(gauge, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) dp(230)));
-
+        home.addView(gauge, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) dp(200)));
         LinearLayout r1 = new LinearLayout(this);
-        tvFps = stat(r1, "🎯 FPS");
-        tvLow = stat(r1, "📉 1% low");
-        tvBat = stat(r1, "🔋 Bateria");
-        root.addView(r1);
+        tvFps = stat(r1, "FPS");
+        tvCpu = stat(r1, "CPU");
+        tvGpu = stat(r1, "GPU");
+        tvBat = stat(r1, "Bateria");
+        home.addView(r1);
+        LinearLayout tipCard = card();
+        tvTip = text("", 14, TXT, false);
+        tipCard.addView(tvTip);
+        home.addView(tipCard);
+        btnPlay = button("🎮  Jogar Wild Rift", 0xFF4DA3FF, 0xFF04101F);
+        btnPlay.setOnClickListener(v -> play());
+        home.addView(btnPlay, btnParams(56));
+        LinearLayout acts = new LinearLayout(this);
+        btnBoost = button("🚀 Liberar RAM", 0xFF1D2A4A, TXT);
+        btnBoost.setTextSize(14);
+        btnBoost.setOnClickListener(v -> boostOnly());
+        btnMonitor = button("", 0xFF1D2A4A, TXT);
+        btnMonitor.setTextSize(14);
+        btnMonitor.setOnClickListener(v -> toggleMonitor());
+        LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, (int) dp(48), 1);
+        half.setMargins(0, 0, (int) dp(4), 0);
+        acts.addView(btnBoost, half);
+        LinearLayout.LayoutParams half2 = new LinearLayout.LayoutParams(0, (int) dp(48), 1);
+        half2.setMargins((int) dp(4), 0, 0, 0);
+        acts.addView(btnMonitor, half2);
+        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ap.setMargins(0, (int) dp(8), 0, 0);
+        home.addView(acts, ap);
+        tvResult = text("", 13, MUT, false);
+        tvResult.setGravity(Gravity.CENTER);
+        home.addView(tvResult);
 
-        LinearLayout r2 = new LinearLayout(this);
-        r2.setPadding(0, (int) dp(6), 0, 0);
-        tvCpu = stat(r2, "🌡 CPU");
-        tvGpu = stat(r2, "🌡 GPU");
-        tvFree = stat(r2, "💾 Livre");
-        root.addView(r2);
-
+        // Desempenho
+        LinearLayout perf = page("Desempenho", "📈");
         gFps = new GraphView(this, "FPS (últimos 2 min)", 0xFF4DA3FF, 0, 60);
         gCpu = new GraphView(this, "Temperatura da CPU °C", 0xFFFF7A59, 30, 50);
-        root.addView(gFps, graphParams());
-        root.addView(gCpu, graphParams());
-
+        perf.addView(gFps, graphParams());
+        perf.addView(gCpu, graphParams());
+        LinearLayout r2 = new LinearLayout(this);
+        r2.setPadding(0, (int) dp(8), 0, 0);
+        tvLow = stat(r2, "1% low");
+        tvFree = stat(r2, "Armazen.");
+        perf.addView(r2);
         LinearLayout info = card();
         tvSwap = text("", 14, TXT, false);
         tvThermal = text("", 14, TXT, false);
         info.addView(tvSwap);
         info.addView(tvThermal);
-        root.addView(info);
+        perf.addView(info);
 
-        LinearLayout tipCard = card();
-        tvTip = text("", 14, TXT, false);
-        tipCard.addView(tvTip);
-        root.addView(tipCard);
-
-        LinearLayout upd = card();
-        upd.addView(text("🔄 Atualizações", 15, TXT, true));
-        tvUpdate = text("Versão instalada: " + Updater.installedName(this), 13, MUT, false);
-        upd.addView(tvUpdate);
-        btnUpdate = button("Verificar atualizações", 0xFF1D2A4A, TXT);
-        btnUpdate.setTextSize(14);
-        btnUpdate.setOnClickListener(v -> onUpdateClick());
-        upd.addView(btnUpdate, btnParams(46));
-        root.addView(upd);
-
-        LinearLayout adv = card();
-        adv.addView(text("🔓 Modo avançado (Shizuku)", 15, TXT, true));
+        // Modo avançado
+        LinearLayout adv = page("Modo avançado", "🔓");
+        LinearLayout advCard = card();
+        advCard.addView(text("Shizuku", 15, TXT, true));
         tvShizuku = text("", 13, MUT, false);
-        adv.addView(tvShizuku);
+        advCard.addView(tvShizuku);
         btnShizuku = button("", 0xFF1D2A4A, TXT);
         btnShizuku.setTextSize(14);
         btnShizuku.setOnClickListener(v -> shizukuAction());
-        adv.addView(btnShizuku, btnParams(46));
-        root.addView(adv);
+        advCard.addView(btnShizuku, btnParams(46));
+        adv.addView(advCard);
+        adv.addView(text("Com o Shizuku o Booster lê FPS e temperatura de CPU/GPU, ativa o Game Mode e faz a limpeza profunda.", 12, MUT, false));
 
-        btnPlay = button("🎮  Jogar Wild Rift (otimizado)", 0xFF4DA3FF, 0xFF04101F);
-        btnPlay.setOnClickListener(v -> play());
-        root.addView(btnPlay, btnParams(56));
+        // Atualizações
+        LinearLayout up = page("Atualizações", "🔄");
+        LinearLayout upCard = card();
+        tvUpdate = text("Versão instalada: " + Updater.installedName(this), 13, MUT, false);
+        upCard.addView(tvUpdate);
+        btnUpdate = button("Verificar atualizações", 0xFF1D2A4A, TXT);
+        btnUpdate.setTextSize(14);
+        btnUpdate.setOnClickListener(v -> onUpdateClick());
+        upCard.addView(btnUpdate, btnParams(46));
+        up.addView(upCard);
 
-        btnBoost = button("🚀  Liberar RAM agora", 0xFF1D2A4A, TXT);
-        btnBoost.setOnClickListener(v -> boostOnly());
-        root.addView(btnBoost, btnParams(56));
-
-        tvResult = text("", 13, MUT, false);
-        tvResult.setGravity(Gravity.CENTER);
-        root.addView(tvResult);
-
-        Button end = button("■  Encerrar sessão e ver resumo", 0xFF1D2A4A, TXT);
-        end.setOnClickListener(v -> endSession());
-        root.addView(end, btnParams(56));
-
+        // Sessão
+        LinearLayout ses = page("Sessão", "📊");
         LinearLayout last = card();
-        last.addView(text("📊 Resumo da última sessão", 15, TXT, true));
+        last.addView(text("Resumo da última sessão", 15, TXT, true));
         tvLast = text(prefs.getString("last", "Nenhuma sessão ainda."), 13, MUT, false);
         last.addView(tvLast);
-        root.addView(last);
+        ses.addView(last);
+        Button end = button("■  Encerrar sessão e ver resumo", 0xFF1D2A4A, TXT);
+        end.setTextSize(14);
+        end.setOnClickListener(v -> endSession());
+        ses.addView(end, btnParams(48));
 
+        // Configurações
+        LinearLayout set = page("Configurações", "⚙️");
+        set.addView(text("DURANTE O JOGO", 11, MUT, true));
         LinearLayout opts = card();
-        swOverlay = sw(opts, "Monitor flutuante durante o jogo", "overlay", true);
+        swOverlay = sw(opts, "Monitor flutuante", "overlay", true);
         swOverlay.setOnCheckedChangeListener((v, on) -> {
             prefs.edit().putBoolean("overlay", on).apply();
-            if (on && !Settings.canDrawOverlays(this)) {
-                toast("Permita \"Sobrepor a outros apps\" para o Booster.");
-                startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName())));
-            }
+            if (on && !Settings.canDrawOverlays(this)) askOverlay();
         });
         swDnd = sw(opts, "Não perturbe ao jogar", "dnd", true);
         swDnd.setOnCheckedChangeListener((v, on) -> {
@@ -160,25 +200,163 @@ public class MainActivity extends Activity {
                 startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
             }
         });
-        swAggr = sw(opts, "Limpeza profunda (força parada, requer Shizuku)", "aggr", true);
+        swAggr = sw(opts, "Limpeza profunda (requer Shizuku)", "aggr", true);
         swAggr.setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("aggr", on).apply());
-        root.addView(opts);
+        tvPos = rowItem(opts, "", v -> cyclePosition());
+        set.addView(opts);
+        set.addView(text("PERMISSÕES", 11, MUT, true));
+        LinearLayout perms = card();
+        tvOverlayPerm = rowItem(perms, "", v -> askOverlay());
+        rowItem(perms, "Pop-up em segundo plano (Xiaomi) ›", v -> openMiuiPerms());
+        rowItem(perms, "Bateria sem restrições ›", v -> openAction(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+        set.addView(perms);
+        set.addView(text("No HyperOS, para o monitor aparecer sobre o jogo, ative \"Exibir pop-ups durante execução em segundo plano\" e \"Exibir na tela de bloqueio\" nas permissões do Booster.", 12, MUT, false));
 
-        root.addView(text("Atalhos", 15, TXT, true));
+        // Atalhos
+        LinearLayout sc = page("Atalhos e dicas", "🧰");
         LinearLayout sh = card();
-        sh.addView(shortcut("🔋 Modo desempenho / bateria", Settings.ACTION_BATTERY_SAVER_SETTINGS));
-        sh.addView(shortcut("🛠 Opções do desenvolvedor", Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS));
-        sh.addView(shortcut("💾 Armazenamento", Settings.ACTION_INTERNAL_STORAGE_SETTINGS));
-        sh.addView(shortcut("📶 Wi-Fi", Settings.ACTION_WIFI_SETTINGS));
-        root.addView(sh);
-
-        root.addView(text("ℹ️ A limpeza profunda fecha apps de terceiros (menos mensagens e sistema); eles não "
+        rowItem(sh, "🔋 Modo desempenho / bateria", v -> openAction(Settings.ACTION_BATTERY_SAVER_SETTINGS));
+        rowItem(sh, "🛠 Opções do desenvolvedor", v -> openAction(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS));
+        rowItem(sh, "💾 Armazenamento", v -> openAction(Settings.ACTION_INTERNAL_STORAGE_SETTINGS));
+        rowItem(sh, "📶 Wi-Fi", v -> openAction(Settings.ACTION_WIFI_SETTINGS));
+        sc.addView(sh);
+        sc.addView(text("A limpeza profunda fecha apps de terceiros (menos mensagens e sistema); eles não "
                 + "notificam até serem abertos de novo. Para mais RAM de verdade: Memória estendida em 3 GB "
                 + "(Configurações → Sobre o telefone → Memória), Game Turbo e reinício semanal.", 12, MUT, false));
 
-        setContentView(sv);
+        scrim = new View(this);
+        scrim.setBackgroundColor(0x99000000);
+        scrim.setVisibility(View.GONE);
+        scrim.setOnClickListener(v -> toggleDrawer(false));
+        root.addView(scrim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        drawer = new LinearLayout(this);
+        drawer.setOrientation(LinearLayout.VERTICAL);
+        drawer.setBackgroundColor(CARD);
+        drawer.setPadding((int) dp(12), (int) dp(44), (int) dp(12), (int) dp(16));
+        drawer.addView(text("⚡ Booster", 22, TXT, true));
+        drawer.addView(text("v" + Updater.installedName(this), 12, MUT, false));
+        View gap = new View(this);
+        drawer.addView(gap, new LinearLayout.LayoutParams(1, (int) dp(16)));
+        for (int i = 0; i < pages.size(); i++) {
+            final int idx = i;
+            TextView it = text(pageIcons.get(i) + "  " + pageNames.get(i), 16, TXT, false);
+            it.setPadding((int) dp(14), (int) dp(13), (int) dp(14), (int) dp(13));
+            it.setOnClickListener(v -> {
+                showPage(idx);
+                toggleDrawer(false);
+            });
+            navItems.add(it);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.setMargins(0, (int) dp(2), 0, (int) dp(2));
+            drawer.addView(it, lp);
+        }
+        FrameLayout.LayoutParams dlp = new FrameLayout.LayoutParams((int) dp(270), ViewGroup.LayoutParams.MATCH_PARENT);
+        root.addView(drawer, dlp);
+        drawer.setTranslationX(-dp(270));
+
+        setContentView(root);
+        showPage(0);
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
         if (System.currentTimeMillis() - prefs.getLong("lastCheck", 0) > 6 * 3600_000L) checkUpdate(false);
+    }
+
+    private LinearLayout page(String name, String icon) {
+        ScrollView sv = new ScrollView(this);
+        sv.setVisibility(View.GONE);
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        int p = (int) dp(16);
+        l.setPadding(p, (int) dp(4), p, (int) dp(24));
+        sv.addView(l);
+        content.addView(sv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        pages.add(sv);
+        pageNames.add(name);
+        pageIcons.add(icon);
+        return l;
+    }
+
+    private void showPage(int idx) {
+        for (int i = 0; i < pages.size(); i++) {
+            pages.get(i).setVisibility(i == idx ? View.VISIBLE : View.GONE);
+            TextView it = navItems.get(i);
+            it.setBackground(i == idx ? round(0xFF1D2A4A, 12) : null);
+            it.setTextColor(i == idx ? 0xFF4DA3FF : TXT);
+        }
+        tvTitle.setText(pageNames.get(idx));
+    }
+
+    private void toggleDrawer(boolean open) {
+        drawerOpen = open;
+        if (open) {
+            scrim.setAlpha(0);
+            scrim.setVisibility(View.VISIBLE);
+        }
+        scrim.animate().alpha(open ? 1 : 0).setDuration(180).withEndAction(() -> {
+            if (!drawerOpen) scrim.setVisibility(View.GONE);
+        });
+        drawer.animate().translationX(open ? 0 : -dp(270)).setDuration(180);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (drawerOpen) toggleDrawer(false);
+        else super.onBackPressed();
+    }
+
+    private TextView rowItem(LinearLayout parent, String label, View.OnClickListener l) {
+        TextView t = text(label, 15, TXT, false);
+        t.setPadding(0, (int) dp(11), 0, (int) dp(11));
+        t.setOnClickListener(l);
+        parent.addView(t);
+        return t;
+    }
+
+    private void openAction(String action) {
+        try {
+            startActivity(new Intent(action));
+        } catch (Exception e) {
+            toast("Abra manualmente pelas Configurações.");
+        }
+    }
+
+    private void askOverlay() {
+        toast("Permita \"Sobrepor a outros apps\" para o Booster.");
+        startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName())));
+    }
+
+    private void openMiuiPerms() {
+        try {
+            Intent i = new Intent("miui.intent.action.APP_PERM_EDITOR");
+            i.setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity");
+            i.putExtra("extra_pkgname", getPackageName());
+            startActivity(i);
+        } catch (Exception e) {
+            startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
+        }
+    }
+
+    private static final String[] POS = {"Esquerda", "Centro", "Direita"};
+
+    private void cyclePosition() {
+        prefs.edit().putInt("pos", (prefs.getInt("pos", 0) + 1) % POS.length).apply();
+        if (OverlayService.running) startForegroundService(new Intent(this, OverlayService.class));
+    }
+
+    private void toggleMonitor() {
+        if (OverlayService.running) {
+            stopService(new Intent(this, OverlayService.class));
+            return;
+        }
+        if (!Settings.canDrawOverlays(this)) {
+            askOverlay();
+            return;
+        }
+        prefs.edit().putBoolean("overlay", true).apply();
+        swOverlay.setChecked(true);
+        Monitor.startSession();
+        startForegroundService(new Intent(this, OverlayService.class));
+        toast("Monitor ligado. Abra o jogo.");
     }
 
     private void onUpdateClick() {
@@ -249,6 +427,7 @@ public class MainActivity extends Activity {
     private void refresh() {
         Monitor.Sample m = Monitor.latest;
         updateShizuku();
+        updateChrome();
         if (m == null) return;
         SystemInfo s = m.sys;
         Locale us = Locale.US;
@@ -275,6 +454,16 @@ public class MainActivity extends Activity {
                 + String.format(us, "%.1f°C", s.tempC) + hr
                 + (m.cpuSrc.isEmpty() ? "" : "\nSensor da CPU: " + m.cpuSrc));
         tvTip.setText(tip(m, adv));
+    }
+
+    private void updateChrome() {
+        btnMonitor.setText(OverlayService.running ? "? Parar monitor" : "?? Monitor flutuante");
+        tvPos.setText("Posi??o do monitor: " + POS[prefs.getInt("pos", 0) % POS.length] + " ?");
+        boolean ov = Settings.canDrawOverlays(this);
+        tvOverlayPerm.setText("Sobrepor a outros apps: " + (ov ? "? permitido" : "? negado (toque para permitir)"));
+        boolean ok = Shell.granted();
+        tvDot.setText(ok ? "? Shizuku ativo" : "? Shizuku off");
+        tvDot.setTextColor(ok ? OK : WARN);
     }
 
     private String tip(Monitor.Sample m, boolean adv) {
@@ -350,6 +539,10 @@ public class MainActivity extends Activity {
     }
 
     private void play() {
+        if (prefs.getBoolean("overlay", true) && !Settings.canDrawOverlays(this)) {
+            askOverlay();
+            return;
+        }
         final Intent game = Booster.gameLaunchIntent(this);
         if (game == null) {
             toast("Wild Rift não encontrado neste celular.");
