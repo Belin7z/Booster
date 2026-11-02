@@ -14,9 +14,9 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
 
-// Atualizações vêm do repositório público Belin7z/Booster-releases (somente APKs + latest.json).
+// Atualizações vêm da última release do repositório Belin7z/Booster (APK + latest.json).
 public final class Updater {
-    private static final String BASE = "https://raw.githubusercontent.com/Belin7z/Booster-releases/main/";
+    private static final String BASE = "https://github.com/Belin7z/Booster/releases/latest/download/";
     public static final String ACTION_RESULT = "com.lucie.wrboost.INSTALL_RESULT";
 
     public interface Progress {
@@ -49,7 +49,7 @@ public final class Updater {
 
     // Devolve a versão mais nova ou null se já estiver atualizado.
     public static Info check(Context c) throws Exception {
-        HttpURLConnection h = open(BASE + "latest.json?t=" + System.currentTimeMillis());
+        HttpURLConnection h = open(BASE + "latest.json");
         try {
             if (h.getResponseCode() != 200) throw new Exception("HTTP " + h.getResponseCode());
             JSONObject j = new JSONObject(readAll(h.getInputStream()));

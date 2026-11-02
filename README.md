@@ -1,11 +1,17 @@
 # Booster
 
-App Android para melhorar o desempenho em jogos (feito para Wild Rift no POCO X6 Pro).
+Otimizador para jogos no Android: libera RAM, monitora FPS, temperatura e uso em tempo real, e gera relatórios de desempenho por jogo.
 
-- Monitor de RAM, temperatura de bateria, CPU/GPU e FPS em tempo real
-- Liberação de RAM antes de jogar e monitor flutuante durante a partida
-- Medição de FPS e sensores via Shizuku (sem root)
-- Atualização dentro do app, a partir do repositório Booster-releases
+**[Baixar a versão mais recente](../../releases/latest)** (arquivo `.apk` em Assets). Depois de instalar, as atualizações chegam dentro do próprio app.
+
+## O que faz
+
+- Monitor flutuante com FPS (`x / taxa da tela`), CPU, GPU, RAM e bateria
+- Detecta qualquer jogo instalado e faz a limpeza de RAM em três níveis
+- Perfil próprio por jogo, relatório com nota, comparativo entre sessões e imagem para compartilhar
+- Tempo de jogo por dia, mesmo quando o jogo não é aberto pelo Booster
+- Painel durante o jogo com captura, gravação, volume, brilho e apps rápidos
+- Medição de FPS e sensores por ADB sem fio embutido (sem root, sem instalar outro app)
 
 ## Compilar
 
@@ -17,5 +23,5 @@ A assinatura usa as variáveis `WRB_KEYSTORE` e `WRB_PASS` ou um `keystore.prope
 
 ## Publicar uma versão
 
-Criar e enviar uma tag `vX.Y`. O GitHub Actions compila, assina e publica o APK e o `latest.json`
-no repositório Booster-releases.
+Criar e enviar uma tag `vX.Y`. O GitHub Actions compila, assina e cria a release com o APK e o `latest.json`,
+que o app consulta para se atualizar.

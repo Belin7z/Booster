@@ -49,42 +49,21 @@ jobs:
             echo "## Novidades"
             git log --no-merges --format='- %s' "$RANGE"
           } > notes.md
-
-      - name: Publicar no Booster-releases
-        env:
-          DEPLOY_KEY: ${{ secrets.RELEASES_DEPLOY_KEY }}
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
-          git clone --depth 1 git@github.com:Belin7z/Booster-releases.git rel
-          cd rel
-          git rm -q --ignore-unmatch '*.apk'
-          cp "../Booster-v$VERSION.apk" .
-          VERSION="$VERSION" python3 -c "
+          VERSION="${GITHUB_REF_NAME#v}" python3 -c "
           import json, os
-          notes = [l[2:] for l in open('../notes.md').read().splitlines() if l.startswith('- ')]
+          notes = [l[2:] for l in open('notes.md').read().splitlines() if l.startswith('- ')]
           json.dump({
-            'versionCode': int(open('../code.txt').read()),
+            'versionCode': int(open('code.txt').read()),
             'versionName': os.environ['VERSION'],
             'apk': 'Booster-v' + os.environ['VERSION'] + '.apk',
-            'sha256': open('../sha.txt').read().strip(),
+            'sha256': open('sha.txt').read().strip(),
             'notes': '\n'.join(notes)[:500]
           }, open('latest.json', 'w'), ensure_ascii=False, indent=2)
           "
-          printf '# Booster\n\nVersão atual: %s\n\n[Baixar o APK](Booster-v%s.apk)\n\nDepois de instalar, as atualizações chegam dentro do próprio app.\n' "$VERSION" "$VERSION" > README.md
-          git config user.name "booster-actions"
-          git config user.email "actions@users.noreply.github.com"
-          git checkout -q --orphan limpo
-          git add -A
-          git commit -q -m "Booster $VERSION"
-          git push -f origin limpo:main
 
-      - name: Criar release no repositório do código
+      - name: Publicar a release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "Booster-$GITHUB_REF_NAME.apk" \
-            --title "Booster ${GITHUB_REF_NAME#v}" --notes-file notes.md
+          gh release create "$GITHUB_REF_NAME" "Booster-$GITHUB_REF_NAME.apk" latest.json \
+            --title "Booster ${GITHUB_REF_NAME#v}" --notes-file notes.md --latest
