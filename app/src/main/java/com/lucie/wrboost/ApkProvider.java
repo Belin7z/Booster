@@ -13,8 +13,8 @@ import java.io.FileNotFoundException;
 
 // Entrega somente o update.apk do cache ao instalador do sistema.
 public class ApkProvider extends ContentProvider {
-    private File file() {
-        return new File(getContext().getCacheDir(), "update.apk");
+    private File file(Uri uri) {
+        return new File(getContext().getCacheDir(), "/report.png".equals(uri.getPath()) ? "report.png" : "update.apk");
     }
 
     @Override
@@ -24,20 +24,21 @@ public class ApkProvider extends ContentProvider {
 
     @Override
     public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
-        if (!"r".equals(mode) || !"/update.apk".equals(uri.getPath())) throw new FileNotFoundException();
-        return ParcelFileDescriptor.open(file(), ParcelFileDescriptor.MODE_READ_ONLY);
+        String p = uri.getPath();
+        if (!"r".equals(mode) || !("/update.apk".equals(p) || "/report.png".equals(p))) throw new FileNotFoundException();
+        return ParcelFileDescriptor.open(file(uri), ParcelFileDescriptor.MODE_READ_ONLY);
     }
 
     @Override
     public Cursor query(Uri uri, String[] projection, String selection, String[] args, String sort) {
         MatrixCursor c = new MatrixCursor(new String[]{OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE});
-        c.addRow(new Object[]{"update.apk", file().length()});
+        c.addRow(new Object[]{file(uri).getName(), file(uri).length()});
         return c;
     }
 
     @Override
     public String getType(Uri uri) {
-        return "application/vnd.android.package-archive";
+        return "/report.png".equals(uri.getPath()) ? "image/png" : "application/vnd.android.package-archive";
     }
 
     @Override
