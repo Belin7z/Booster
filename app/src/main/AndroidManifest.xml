@@ -31,7 +31,7 @@
             android:name=".MonitorTile"
             android:exported="true"
             android:label="Booster"
-            android:icon="@android:drawable/ic_menu_info_details"
+            android:icon="@drawable/ic_bolt"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />

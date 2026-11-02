@@ -65,7 +65,7 @@ public class OverlayService extends Service {
         Intent stop = new Intent(this, OverlayService.class).setAction(ACTION_STOP);
         PendingIntent pi = PendingIntent.getService(this, 0, stop, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification n = new Notification.Builder(this, CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_menu_info_details)
+                .setSmallIcon(R.drawable.ic_bolt)
                 .setContentTitle("Booster")
                 .setContentText("Monitor de RAM e temperatura ativo")
                 .addAction(new Notification.Action.Builder(null, "Parar", pi).build())
@@ -123,7 +123,7 @@ public class OverlayService extends Service {
         if (!Float.isNaN(m.gpu)) t.append(" GPU ").append(String.format(us, "%.0f°", m.gpu));
         t.append("  BAT ").append(String.format(us, "%.0f°", s.tempC)).append("\n");
         t.append("RAM ").append(SystemInfo.gb(s.ramTotal - s.ramAvail)).append("/").append(SystemInfo.gb(s.ramTotal))
-                .append("G  ").append(s.battPct).append("%").append(s.charging ? "⚡" : "");
+                .append("G  ").append(s.battPct).append("%").append(s.charging ? " +" : "");
         view.setText(t.toString());
         float hot = Float.isNaN(m.cpu) ? s.tempC : Math.max(m.cpu - 8, s.tempC);
         boolean lowFps = m.fps >= 0 && m.fps < 45;

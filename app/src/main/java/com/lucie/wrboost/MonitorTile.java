@@ -36,7 +36,7 @@ public class MonitorTile extends TileService {
     private void paint(boolean on) {
         Tile t = getQsTile();
         if (t == null) return;
-        t.setIcon(Icon.createWithResource(this, android.R.drawable.ic_menu_info_details));
+        t.setIcon(Icon.createWithResource(this, R.drawable.ic_bolt));
         t.setLabel("Booster");
         t.setState(on ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
         t.updateTile();
