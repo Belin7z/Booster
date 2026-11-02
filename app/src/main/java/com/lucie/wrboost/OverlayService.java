@@ -45,11 +45,13 @@ public class OverlayService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // Quem usou startForegroundService precisa chamar startForeground logo, senão o Android acusa "não responde".
+        startForegroundCompat();
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            stopForeground(true);
             stopSelf();
             return START_NOT_STICKY;
         }
-        startForegroundCompat();
         if (!acquired) {
             Monitor.acquire(this);
             acquired = true;
