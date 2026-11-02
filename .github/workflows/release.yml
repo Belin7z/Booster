@@ -48,7 +48,7 @@ jobs:
           [ -z "$PREV" ] && RANGE="-1 ${GITHUB_REF_NAME}"
           {
             echo "## Novidades"
-            git log --no-merges --format='- %s' "$RANGE"
+            git log --no-merges --format='- %s' $RANGE
           } > notes.md
           VERSION="${GITHUB_REF_NAME#v}" python3 -c "
           import json, os
