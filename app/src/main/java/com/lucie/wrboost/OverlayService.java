@@ -82,15 +82,17 @@ public class OverlayService extends Service {
         wm = getSystemService(WindowManager.class);
         float d = getResources().getDisplayMetrics().density;
         view = new TextView(this);
-        view.setTextColor(0xFFFFFFFF);
-        view.setTextSize(11);
-        view.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        view.setTextColor(0xFFF2F5FF);
+        view.setTextSize(12);
+        view.setLineSpacing(0, 1.05f);
+        view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-        bg.setColor(0xB3000000);
-        bg.setCornerRadius(8 * d);
+        bg.setColor(0xC70A0F1C);
+        bg.setCornerRadius(10 * d);
+        bg.setStroke((int) Math.max(1, d), 0x33FFFFFF);
         view.setBackground(bg);
-        int p = (int) (6 * d);
-        view.setPadding(p, p / 2, p, p / 2);
+        int p = (int) (8 * d);
+        view.setPadding(p, (int) (5 * d), p, (int) (5 * d));
 
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
@@ -111,23 +113,7 @@ public class OverlayService extends Service {
         if (view == null) return;
         Monitor.Sample m = Monitor.latest;
         if (m == null) return;
-        SystemInfo s = m.sys;
-        java.util.Locale us = java.util.Locale.US;
-        StringBuilder t = new StringBuilder();
-        if (m.fps >= 0) {
-            t.append("FPS ").append(m.fps);
-            if (!Float.isNaN(m.low1)) t.append(" (1% ").append(Math.round(m.low1)).append(")");
-            t.append("\n");
-        }
-        t.append("CPU ").append(Float.isNaN(m.cpu) ? "--" : String.format(us, "%.0f°", m.cpu));
-        if (!Float.isNaN(m.gpu)) t.append(" GPU ").append(String.format(us, "%.0f°", m.gpu));
-        t.append("  BAT ").append(String.format(us, "%.0f°", s.tempC)).append("\n");
-        t.append("RAM ").append(SystemInfo.gb(s.ramTotal - s.ramAvail)).append("/").append(SystemInfo.gb(s.ramTotal))
-                .append("G  ").append(s.battPct).append("%").append(s.charging ? " +" : "");
-        view.setText(t.toString());
-        float hot = Float.isNaN(m.cpu) ? s.tempC : Math.max(m.cpu - 8, s.tempC);
-        boolean lowFps = m.fps >= 0 && m.fps < 45;
-        view.setTextColor(hot >= 43 || s.thermalStatus >= 2 || lowFps ? 0xFFFF5252 : hot >= 39 ? 0xFFF5A623 : 0xFF2ECC71);
+        view.setText(OverlayText.build(m, getSharedPreferences("wr", MODE_PRIVATE)));
     }
 
     @Override

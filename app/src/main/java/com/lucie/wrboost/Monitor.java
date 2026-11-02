@@ -19,6 +19,31 @@ public final class Monitor {
         public int fps = -1;
         public float low1 = Float.NaN;
         public int stutters;
+        public int hz = 60;
+    }
+
+    public static int refreshRate(Context c) {
+        try {
+            android.view.Display d = c.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
+            return Math.max(1, Math.round(d.getRefreshRate()));
+        } catch (Throwable t) {
+            return 60;
+        }
+    }
+
+    // Taxas que a tela suporta (ex.: 60, 90, 120), em ordem crescente.
+    public static int[] supportedRates(Context c) {
+        java.util.TreeSet<Integer> set = new java.util.TreeSet<>();
+        try {
+            android.view.Display d = c.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
+            for (android.view.Display.Mode m : d.getSupportedModes()) set.add(Math.round(m.getRefreshRate()));
+        } catch (Throwable ignored) {
+        }
+        if (set.isEmpty()) set.add(refreshRate(c));
+        int[] a = new int[set.size()];
+        int i = 0;
+        for (int v : set) a[i++] = v;
+        return a;
     }
 
     private static final String ZONES_CMD = "for z in /sys/class/thermal/thermal_zone*; do "
@@ -49,6 +74,7 @@ public final class Monitor {
 
     public static synchronized void acquire(Context c) {
         app = c.getApplicationContext();
+        Adb.init(app);
         if (refs++ == 0) {
             final int g = ++generation;
             Thread t = new Thread(() -> loop(g));
@@ -91,6 +117,8 @@ public final class Monitor {
         s.t = System.currentTimeMillis();
         s.sys = SystemInfo.read(app);
         tick++;
+        Adb.maybeReconnect(app);
+        s.hz = refreshRate(app);
 
         Parsers.Temps tm = readZones();
         if ((Float.isNaN(tm.cpu) || Float.isNaN(tm.gpu)) && Shell.granted()) {
