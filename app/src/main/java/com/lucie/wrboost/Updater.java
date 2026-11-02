@@ -94,6 +94,7 @@ public final class Updater {
         java.io.File apk = new java.io.File(c.getCacheDir(), "update.apk");
         saveWhatsNew(c, info);
         try {
+            if (viaShell(c, apk)) return;
             viaSession(c, apk);
         } catch (Exception e) {
             viaSystemInstaller(c, apk);
@@ -151,7 +152,7 @@ public final class Updater {
         final Context app = c.getApplicationContext();
         android.content.SharedPreferences p = prefs(app);
         long now = System.currentTimeMillis();
-        if (!p.getBoolean("auto_update", true) || now - p.getLong("auto_at", 0) < 6 * 3600_000L) return;
+        if (!p.getBoolean("auto_update", true) || now - p.getLong("auto_at", 0) < 15 * 60_000L) return;
         android.net.ConnectivityManager cm = app.getSystemService(android.net.ConnectivityManager.class);
         if (cm == null || cm.isActiveNetworkMetered() || cm.getActiveNetwork() == null) return;
         if (!autoBusy.compareAndSet(false, true)) return;
@@ -161,6 +162,11 @@ public final class Updater {
                 Info i = check(app);
                 if (i == null) return;
                 if (!ready(app, i)) download(app, i, pc -> { });
+                boolean idle = Monitor.activeGame() == null && !Monitor.sessionActive();
+                if (idle && p.getBoolean("auto_install", true) && Shell.granted()) {
+                    saveWhatsNew(app, i);
+                    if (viaShell(app, new java.io.File(app.getCacheDir(), "update.apk"))) return;
+                }
                 notifyReady(app, i);
             } catch (Throwable e) {
                 CrashLog.log(app, "Atualização automática", String.valueOf(e.getMessage()));
@@ -203,6 +209,25 @@ public final class Updater {
             return out;
         } finally {
             h.disconnect();
+        }
+    }
+
+    // Com o modo avançado conectado, instala sem nenhuma tela de confirmação.
+    static boolean viaShell(Context c, java.io.File apk) {
+        if (!Shell.granted()) return false;
+        try {
+            java.io.File dir = c.getExternalCacheDir();
+            if (dir == null) return false;
+            java.io.File out = new java.io.File(dir, "update.apk");
+            try (InputStream in = new java.io.FileInputStream(apk); OutputStream os = new java.io.FileOutputStream(out)) {
+                byte[] buf = new byte[32768];
+                int n;
+                while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+            }
+            String r = Shell.exec("pm install -r " + out.getAbsolutePath(), 120_000);
+            return r != null && r.contains("Success");
+        } catch (Exception e) {
+            return false;
         }
     }
 

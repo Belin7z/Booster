@@ -88,6 +88,23 @@ public final class Parsers {
         return t;
     }
 
+    // Todas as camadas candidatas do pacote, da mais provável (SurfaceView BLAST) para a menos.
+    public static List<String> findLayers(String list, String pkg) {
+        List<String> blast = new ArrayList<>(), sv = new ArrayList<>(), other = new ArrayList<>();
+        if (list == null || pkg == null) return blast;
+        for (String raw : list.split("\n")) {
+            String l = raw.trim();
+            if (!l.contains(pkg) || l.contains("'")) continue;
+            if (l.startsWith("Background for") || l.startsWith("Bounds for") || l.startsWith("ActivityRecord")
+                    || l.startsWith("Task=") || l.startsWith("WindowToken")) continue;
+            if (l.startsWith("SurfaceView")) (l.contains("BLAST") ? blast : sv).add(l);
+            else other.add(l);
+        }
+        blast.addAll(sv);
+        blast.addAll(other);
+        return blast;
+    }
+
     public static String findLayer(String list, String pkg) {
         if (list == null || pkg == null) return null;
         String surfaceBlast = null, surface = null, any = null;

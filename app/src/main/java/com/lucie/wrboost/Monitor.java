@@ -138,6 +138,7 @@ public final class Monitor {
         Adb.maybeReconnect(app);
         s.hz = refreshRate(app);
         autoDetect();
+        if (tick % 20 == 3 && !Games.hasUsageAccess(app) && Shell.granted()) new Thread(() -> Games.grantUsageViaShell(app)).start();
         autoClean(s);
         if (tick % 300 == 7 && Games.hasUsageAccess(app)) new Thread(() -> PlayTime.update(app)).start();
 
@@ -397,9 +398,18 @@ public final class Monitor {
         return "limite do jogo";
     }
 
+    // Motivo de o FPS estar vazio, mostrado no monitor para facilitar o diagnóstico.
+    public static volatile String fpsNote = "";
+
     private static void readFps(Sample s) {
         String pkg = activeGame();
-        if (pkg == null || !Shell.granted()) {
+        if (pkg == null) {
+            fpsNote = "sem jogo detectado";
+            tracker.reset();
+            return;
+        }
+        if (!Shell.granted()) {
+            fpsNote = "conecte o modo avançado";
             tracker.reset();
             return;
         }
@@ -409,26 +419,39 @@ public final class Monitor {
             layer = null;
             tracker.reset();
         }
+        java.util.List<Long> frames = null;
+        if (layer != null) {
+            frames = Parsers.parseLatency(Shell.exec("dumpsys SurfaceFlinger --latency '" + layer + "'", 2000));
+            if (frames.isEmpty()) layer = null;
+        }
         if (layer == null) {
-            if (now - layerCheck < 3000) return;
+            if (now - layerCheck < 2000) return;
             layerCheck = now;
-            layer = Parsers.findLayer(Shell.exec("dumpsys SurfaceFlinger --list", 3000), pkg);
-            if (layer == null) {
+            java.util.List<String> cands = Parsers.findLayers(Shell.exec("dumpsys SurfaceFlinger --list", 3000), pkg);
+            if (cands.isEmpty()) {
+                fpsNote = "camada do jogo não encontrada";
                 tracker.reset();
                 return;
             }
+            for (int i = 0; i < Math.min(4, cands.size()); i++) {
+                java.util.List<Long> f = Parsers.parseLatency(Shell.exec("dumpsys SurfaceFlinger --latency '" + cands.get(i) + "'", 2000));
+                if (f.size() > 2) {
+                    layer = cands.get(i);
+                    frames = f;
+                    break;
+                }
+            }
+            if (layer == null) {
+                fpsNote = "sistema não informou os quadros";
+                return;
+            }
         }
-        java.util.List<Long> frames = Parsers.parseLatency(Shell.exec("dumpsys SurfaceFlinger --latency '" + layer + "'", 2000));
-        if (frames.isEmpty()) {
-            layer = null;
-            return;
-        }
+        fpsNote = "";
         tracker.add(frames);
         s.fps = tracker.fps(System.nanoTime());
         s.low1 = tracker.low1();
         s.stutters = tracker.stutters;
     }
-
     private static synchronized void publish(Sample s) {
         latest = s;
         history.addLast(s);

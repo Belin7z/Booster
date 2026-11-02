@@ -210,7 +210,7 @@ public class MainActivity extends Activity {
         ptPerm.addView(text("O tempo de jogo vem do histórico de uso do Android, então conta mesmo quando você abre o jogo fora do Booster. Para isso, permita o acesso ao uso de apps.", 13, MUT, false));
         Button grant = button("Permitir acesso ao uso", Theme.ACC, Theme.ONACC);
         grant.setTextSize(14);
-        grant.setOnClickListener(v -> openAction(Settings.ACTION_USAGE_ACCESS_SETTINGS));
+        grant.setOnClickListener(v -> usageAccess());
         ptPerm.addView(grant, btnParams(44));
         pt.addView(ptPerm);
         LinearLayout ptRow = new LinearLayout(this);
@@ -300,6 +300,8 @@ public class MainActivity extends Activity {
         LinearLayout upOpt = card();
         sw(upOpt, "Baixar atualizações sozinho (só no Wi-Fi)", "auto_update", true)
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("auto_update", on).apply());
+        sw(upOpt, "Instalar sozinho, sem confirmação (modo avançado, fora do jogo)", "auto_install", true)
+                .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("auto_install", on).apply());
         up.addView(upOpt);
         up.addView(text("Quando houver versão nova, o Booster baixa e confere a integridade em segundo plano e avisa por notificação. Você só confirma a instalação.", 12, MUT, false));
         Button hist = button("Histórico de versões", Theme.BTN2, TXT);
@@ -344,13 +346,22 @@ public class MainActivity extends Activity {
         LinearLayout items = card();
         String[][] its = {{"FPS", "ov_fps", "1"}, {"FPS 1% low", "ov_low", "0"}, {"Temperatura da CPU", "ov_cpu", "1"},
                 {"Temperatura da GPU", "ov_gpu", "1"}, {"Memória RAM", "ov_ram", "1"}, {"Bateria", "ov_bat", "0"}, {"Ping da rede", "ov_ping", "0"},
-                {"Layout horizontal", "ov_h", "0"}};
+                {"Taxa da tela (Hz)", "ov_hz", "0"}, {"Relógio", "ov_clock", "0"}, {"Layout horizontal", "ov_h", "0"}};
         for (String[] it : its) {
             final String key = it[1];
             Switch s = sw(items, it[0], key, it[2].equals("1"));
             s.setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean(key, on).apply());
         }
         tvFpsTarget2 = rowItem(items, "", R.drawable.ic_speed, v -> cycleFpsTarget());
+        tvOvSize = rowItem(items, "", R.drawable.ic_tune, v -> {
+            prefs.edit().putInt("ov_size", (prefs.getInt("ov_size", 1) + 1) % 4).apply();
+            refreshOvLabels();
+        });
+        tvOvBg = rowItem(items, "", R.drawable.ic_overlay, v -> {
+            prefs.edit().putInt("ov_bg", (prefs.getInt("ov_bg", 2) + 1) % 4).apply();
+            refreshOvLabels();
+        });
+        refreshOvLabels();
         set.addView(items);
         set.addView(text("PRÉ-VISUALIZAÇÃO", 11, MUT, true));
         LinearLayout pv = card();
@@ -394,10 +405,12 @@ public class MainActivity extends Activity {
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("panel", on).apply());
         sw(gpc, "Esconder na borda quando parada", "bubble_dock", true)
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("bubble_dock", on).apply());
+        sw(gpc, "Abrir apps rápidos em janela flutuante (experimental)", "panel_float", false)
+                .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("panel_float", on).apply());
         tvBubble = rowItem(gpc, "", R.drawable.ic_overlay, v -> cycleBubble());
         rowItem(gpc, "Apps do painel (acesso sem sair do jogo)", R.drawable.ic_add, v -> pickApps("panel_apps", "Apps no painel do jogo", GamePanel.apps(this)));
         set.addView(gpc);
-        set.addView(text("A bolha aparece sozinha ao entrar em qualquer jogo da sua biblioteca, mesmo aberto fora do app (precisa do acesso de uso). Arraste-a para qualquer ponto da tela; parada, ela fica translúcida e se esconde na borda. Toque nela para liberar RAM, ligar o Não perturbe ou abrir outros apps. Com o modo avançado conectado, o app abre em janela flutuante quando o sistema permitir.", 12, MUT, false));
+        set.addView(text("A bolha aparece sozinha ao entrar em qualquer jogo da sua biblioteca, mesmo aberto fora do app (precisa do acesso de uso). Arraste-a para qualquer ponto da tela; parada, ela fica translúcida e se esconde na borda. Toque nela para liberar RAM, ligar o Não perturbe ou abrir outros apps. Por padrão os apps abrem em tela cheia; a janela flutuante é experimental e pode ficar sem ajuste em algumas ROMs.", 12, MUT, false));
         set.addView(section("DETECÇÃO DE JOGOS"));
         LinearLayout det = card();
         sw(det, "Detectar jogos automaticamente", "auto", true).setOnCheckedChangeListener((v, on) -> {
@@ -408,7 +421,7 @@ public class MainActivity extends Activity {
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("auto_boost", on).apply());
         sw(det, "Mostrar o monitor só durante jogos", "ov_only_game", false)
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("ov_only_game", on).apply());
-        tvUsage = rowItem(det, "", R.drawable.ic_check, v -> openAction(Settings.ACTION_USAGE_ACCESS_SETTINGS));
+        tvUsage = rowItem(det, "", R.drawable.ic_check, v -> usageAccess());
         set.addView(det);
         set.addView(text("Com o acesso ao uso de apps (ou o modo avançado conectado) o Booster sabe qual jogo está aberto, mede o FPS dele e grava o relatório sozinho.", 12, MUT, false));
         set.addView(section("PERMISSÕES"));
@@ -778,6 +791,34 @@ public class MainActivity extends Activity {
         return t;
     }
 
+    // 1) tenta conceder pelo modo avançado; 2) senão, leva ao "Info do app" para liberar as configurações restritas
+    // (o Android bloqueia o botão em apps instalados fora da loja) e depois à tela de acesso de uso.
+    private void usageAccess() {
+        if (Games.hasUsageAccess(this)) {
+            toast("O acesso já está permitido.");
+            return;
+        }
+        new Thread(() -> {
+            boolean ok = Games.grantUsageViaShell(this);
+            runOnUiThread(() -> {
+                if (ok) {
+                    toast("Acesso concedido pelo modo avançado.");
+                    return;
+                }
+                if (prefs.getBoolean("usage_hint", false)) {
+                    openAction(Settings.ACTION_USAGE_ACCESS_SETTINGS);
+                    return;
+                }
+                prefs.edit().putBoolean("usage_hint", true).apply();
+                dialog().setTitle("Liberar acesso de uso")
+                        .setMessage("Se o botão aparecer bloqueado:\n\n1. Toque em Abrir Info do app.\n2. Toque nos 3 pontinhos (canto superior direito) e em \"Permitir configurações restritas\".\n3. Volte e ative o Booster em Acesso de uso.\n\nOu conecte o modo avançado: o Booster concede o acesso sozinho.")
+                        .setPositiveButton("Abrir Info do app", (d, w) -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))))
+                        .setNegativeButton("Já liberei", (d, w) -> openAction(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                        .show();
+            });
+        }).start();
+    }
+
     private void openAction(String action) {
         try {
             startActivity(new Intent(action));
@@ -802,7 +843,17 @@ public class MainActivity extends Activity {
         }
     }
 
-    private static final String[] POS = {"Esquerda", "Centro", "Direita"};
+    private static final String[] POS = {"Topo esquerda", "Topo centro", "Topo direita", "Embaixo esquerda", "Embaixo centro", "Embaixo direita"};
+    private TextView tvOvSize, tvOvBg;
+
+    private void refreshOvLabels() {
+        if (tvOvSize != null) tvOvSize.setText("Tamanho do texto: " + OverlayText.SIZE_NAMES[prefs.getInt("ov_size", 1) % 4]);
+        if (tvOvBg != null) tvOvBg.setText("Fundo do monitor: " + OverlayText.BG_NAMES[prefs.getInt("ov_bg", 2) % 4]);
+        if (tvPreview != null) {
+            tvPreview.setTextSize(OverlayText.SIZES[prefs.getInt("ov_size", 1) % 4]);
+            tvPreview.setBackgroundColor(OverlayText.BGS[prefs.getInt("ov_bg", 2) % 4] | 0x00000000);
+        }
+    }
 
     private void cyclePosition() {
         prefs.edit().putInt("pos", (prefs.getInt("pos", 0) + 1) % POS.length).apply();
@@ -1111,7 +1162,7 @@ public class MainActivity extends Activity {
                 final int st = tutStep;
                 ab.setOnClickListener(v -> {
                     if (st == 1) askOverlay();
-                    else if (st == 2) openAction(Settings.ACTION_USAGE_ACCESS_SETTINGS);
+                    else if (st == 2) usageAccess();
                     else if (st == 3) startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
                     else {
                         closeTutorial();

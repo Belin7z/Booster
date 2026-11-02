@@ -609,7 +609,7 @@ public class GamePanel {
         final Intent in = Booster.launchIntent(c, pkg);
         if (in == null) return;
         in.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (!pkg.equals(c.getPackageName()) && Shell.granted()) {
+        if (!pkg.equals(c.getPackageName()) && Shell.granted() && prefs().getBoolean("panel_float", false)) {
             final android.content.ComponentName cn = in.getComponent();
             if (cn != null) {
                 // Tenta abrir em janela flutuante para o jogo continuar visível.

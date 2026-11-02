@@ -143,6 +143,15 @@ public final class Games {
         }
     }
 
+    // Concede o acesso de uso pelo ADB/Shizuku, sem passar pela tela bloqueada do sistema. Devolve true se ficou permitido.
+    public static boolean grantUsageViaShell(Context c) {
+        if (hasUsageAccess(c)) return true;
+        if (!Shell.granted()) return false;
+        String pkg = c.getPackageName();
+        Shell.exec("appops set " + pkg + " GET_USAGE_STATS allow; appops set " + pkg + " android:get_usage_stats allow", 4000);
+        return hasUsageAccess(c);
+    }
+
     // Pacote do app em primeiro plano. Usa o acesso de uso (leve) e, sem ele, o ADB embutido.
     public static String foreground(Context c) {
         if (hasUsageAccess(c)) {

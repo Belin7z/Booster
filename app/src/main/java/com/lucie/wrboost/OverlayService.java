@@ -100,6 +100,7 @@ public class OverlayService extends Service {
     private void addOverlay() {
         wm = getSystemService(WindowManager.class);
         float d = getResources().getDisplayMetrics().density;
+        appliedPos = -1;
         view = new TextView(this);
         view.setTextColor(0xFFF2F5FF);
         view.setTextSize(12);
@@ -128,6 +129,24 @@ public class OverlayService extends Service {
         wm.addView(view, lp);
     }
 
+    private int appliedPos = -1;
+
+    // Posições 0-2 no topo (esquerda, centro, direita) e 3-5 embaixo; muda sem reiniciar o serviço.
+    private void applyPos(int pos) {
+        if (pos == appliedPos || view == null || wm == null) return;
+        appliedPos = pos;
+        float d = getResources().getDisplayMetrics().density;
+        WindowManager.LayoutParams lp = (WindowManager.LayoutParams) view.getLayoutParams();
+        int col = pos % 3;
+        lp.gravity = (pos >= 3 ? Gravity.BOTTOM : Gravity.TOP) | (col == 1 ? Gravity.CENTER_HORIZONTAL : col == 2 ? Gravity.END : Gravity.START);
+        lp.x = col == 1 ? 0 : (int) (48 * d);
+        lp.y = (int) (4 * d);
+        try {
+            wm.updateViewLayout(view, lp);
+        } catch (Exception ignored) {
+        }
+    }
+
     private void update() {
         if (view == null) return;
         Monitor.Sample m = Monitor.latest;
@@ -135,7 +154,13 @@ public class OverlayService extends Service {
         android.content.SharedPreferences p = getSharedPreferences("wr", MODE_PRIVATE);
         boolean show = !p.getBoolean("ov_only_game", false) || Monitor.sessionActive() || Monitor.activeGame() != null;
         view.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
-        if (show) view.setText(OverlayText.build(m, p));
+        if (show) {
+            view.setText(OverlayText.build(m, p));
+            int si = Math.max(0, Math.min(3, p.getInt("ov_size", 1))), bi = Math.max(0, Math.min(3, p.getInt("ov_bg", 2)));
+            view.setTextSize(OverlayText.SIZES[si]);
+            ((android.graphics.drawable.GradientDrawable) view.getBackground()).setColor(OverlayText.BGS[bi]);
+            applyPos(p.getInt("pos", 0));
+        }
     }
 
     @Override

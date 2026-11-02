@@ -44,6 +44,11 @@ public final class OverlayText {
         if (p.getBoolean("ov_fps", true)) {
             int target = fpsTarget(p, m);
             item(b, "FPS", (m.fps >= 0 ? String.valueOf(m.fps) : "--") + " / " + target, fpsColor(m.fps, target), horizontal);
+            String note = Monitor.fpsNote;
+            if (m.fps < 0 && note != null && !note.isEmpty()) item(b, "", note, WARN, horizontal);
+        }
+        if (p.getBoolean("ov_hz", false)) {
+            item(b, "TELA", m.hz + " Hz", WHITE, horizontal);
         }
         if (p.getBoolean("ov_low", false)) {
             item(b, "1%", Float.isNaN(m.low1) ? "--" : String.valueOf(Math.round(m.low1)), WHITE, horizontal);
@@ -67,9 +72,17 @@ public final class OverlayText {
             item(b, "PING", pg < 0 ? "--" : pg + " ms" + (Monitor.lossPct > 0 ? " · " + Monitor.lossPct + "%" : ""),
                     pg < 0 ? WHITE : pg >= 120 ? BAD : pg >= 60 ? WARN : OK, horizontal);
         }
+        if (p.getBoolean("ov_clock", false)) {
+            item(b, "HORA", new java.text.SimpleDateFormat("HH:mm", us).format(new java.util.Date()), WHITE, horizontal);
+        }
         if (b.length() == 0) b.append("Nenhum item selecionado");
         return b;
     }
+
+    public static final float[] SIZES = {10f, 12f, 14f, 16f};
+    public static final String[] SIZE_NAMES = {"Pequeno", "Médio", "Grande", "Enorme"};
+    public static final int[] BGS = {0x00000000, 0x660A0F1C, 0xA60A0F1C, 0xE60A0F1C};
+    public static final String[] BG_NAMES = {"Sem fundo", "Leve", "Médio", "Sólido"};
 
     private static void item(SpannableStringBuilder b, String label, String value, int color, boolean horizontal) {
         if (b.length() > 0) b.append(horizontal ? "    " : "\n");
