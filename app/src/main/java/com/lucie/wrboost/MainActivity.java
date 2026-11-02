@@ -47,6 +47,8 @@ public class MainActivity extends Activity {
     private TextView tvFps, tvLow, tvCpu, tvGpu, tvBat, tvFree;
     private TextView tvSwap, tvThermal, tvTip, tvResult, tvShizuku, tvLast;
     private Switch swOverlay, swDnd, swAggr;
+    private TextView tvAdb, tvFpsTarget, tvFpsTarget2, tvPreview, tvRates;
+    private Button btnAdb, btnForget;
     private Button btnPlay, btnBoost, btnShizuku, btnUpdate;
     private TextView tvUpdate;
     private Updater.Info pending;
@@ -106,6 +108,9 @@ public class MainActivity extends Activity {
         tvGpu = stat(r1, "GPU");
         tvBat = stat(r1, "Bateria");
         home.addView(r1);
+        tvFpsTarget = text("", 12, MUT, false);
+        tvFpsTarget.setGravity(Gravity.CENTER);
+        home.addView(tvFpsTarget);
         LinearLayout tipCard = card();
         tvTip = text("", 14, TXT, false);
         tipCard.addView(tvTip);
@@ -146,6 +151,8 @@ public class MainActivity extends Activity {
         tvLow = stat(r2, "1% low");
         tvFree = stat(r2, "Armazen.");
         perf.addView(r2);
+        tvRates = text("", 13, MUT, false);
+        perf.addView(tvRates);
         LinearLayout info = card();
         tvSwap = text("", 14, TXT, false);
         tvThermal = text("", 14, TXT, false);
@@ -155,8 +162,25 @@ public class MainActivity extends Activity {
 
         // Modo avançado
         LinearLayout adv = page("Modo avançado", R.drawable.ic_lock_open);
+        LinearLayout adbCard = card();
+        adbCard.addView(text("Conexão integrada (sem Shizuku)", 15, TXT, true));
+        tvAdb = text("", 13, MUT, false);
+        adbCard.addView(tvAdb);
+        btnAdb = button("", 0xFF4DA3FF, 0xFF04101F);
+        btnAdb.setTextSize(14);
+        btnAdb.setOnClickListener(v -> adbAction());
+        adbCard.addView(btnAdb, btnParams(46));
+        btnForget = button("Esquecer pareamento", 0xFF1D2A4A, TXT);
+        btnForget.setTextSize(13);
+        btnForget.setOnClickListener(v -> {
+            Adb.forget(this);
+            toast("Pareamento removido.");
+        });
+        adbCard.addView(btnForget, btnParams(42));
+        adv.addView(adbCard);
+        adv.addView(text("Como parear: 1) ative a Depuração sem fio nas Opções do desenvolvedor (Wi-Fi ligado); 2) toque em Iniciar pareamento e, na tela \"Parear dispositivo com código\", digite o código na notificação do Booster. Só precisa fazer uma vez.", 12, MUT, false));
         LinearLayout advCard = card();
-        advCard.addView(text("Shizuku", 15, TXT, true));
+        advCard.addView(text("Alternativa: Shizuku", 15, TXT, true));
         tvShizuku = text("", 13, MUT, false);
         advCard.addView(tvShizuku);
         btnShizuku = button("", 0xFF1D2A4A, TXT);
@@ -207,10 +231,27 @@ public class MainActivity extends Activity {
                 startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
             }
         });
-        swAggr = sw(opts, "Limpeza profunda (requer Shizuku)", "aggr", true);
+        swAggr = sw(opts, "Limpeza profunda (requer modo avançado)", "aggr", true);
         swAggr.setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("aggr", on).apply());
         tvPos = rowItem(opts, "", R.drawable.ic_overlay, v -> cyclePosition());
         set.addView(opts);
+        set.addView(text("ITENS DO MONITOR", 11, MUT, true));
+        LinearLayout items = card();
+        String[][] its = {{"FPS", "ov_fps", "1"}, {"FPS 1% low", "ov_low", "0"}, {"Temperatura da CPU", "ov_cpu", "1"},
+                {"Temperatura da GPU", "ov_gpu", "1"}, {"Memória RAM", "ov_ram", "1"}, {"Bateria", "ov_bat", "0"},
+                {"Layout horizontal", "ov_h", "0"}};
+        for (String[] it : its) {
+            final String key = it[1];
+            Switch s = sw(items, it[0], key, it[2].equals("1"));
+            s.setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean(key, on).apply());
+        }
+        tvFpsTarget2 = rowItem(items, "", R.drawable.ic_speed, v -> cycleFpsTarget());
+        set.addView(items);
+        set.addView(text("PRÉ-VISUALIZAÇÃO", 11, MUT, true));
+        LinearLayout pv = card();
+        tvPreview = text("", 13, TXT, false);
+        pv.addView(tvPreview);
+        set.addView(pv);
         set.addView(text("PERMISSÕES", 11, MUT, true));
         LinearLayout perms = card();
         tvOverlayPerm = rowItem(perms, "", R.drawable.ic_check, v -> askOverlay());
@@ -454,15 +495,19 @@ public class MainActivity extends Activity {
     private void refresh() {
         Monitor.Sample m = Monitor.latest;
         updateShizuku();
+        updateAdb();
         updateChrome();
+        if (m != null) tvPreview.setText(OverlayText.build(m, prefs));
         if (m == null) return;
         SystemInfo s = m.sys;
         Locale us = Locale.US;
         gauge.set(s.ramUsedPct(), SystemInfo.gb(s.ramTotal - s.ramAvail) + " / " + SystemInfo.gb(s.ramTotal) + " GB");
 
         boolean adv = Shell.granted();
-        tvFps.setText(m.fps >= 0 ? String.valueOf(m.fps) : "--");
-        tvFps.setTextColor(m.fps < 0 ? TXT : m.fps >= 55 ? OK : m.fps >= 40 ? WARN : BAD);
+        int target = OverlayText.fpsTarget(prefs, m);
+        tvFps.setText((m.fps >= 0 ? String.valueOf(m.fps) : "--") + " / " + target);
+        tvFps.setTextColor(OverlayText.fpsColor(m.fps, target));
+        tvFpsTarget.setText("Tela: " + m.hz + " Hz");
         tvLow.setText(Float.isNaN(m.low1) ? "--" : String.valueOf(Math.round(m.low1)));
         tvCpu.setText(Float.isNaN(m.cpu) ? "n/d" : String.format(us, "%.1f°", m.cpu));
         tvCpu.setTextColor(Float.isNaN(m.cpu) ? TXT : m.cpu >= 50 ? BAD : m.cpu >= 43 ? WARN : OK);
@@ -483,14 +528,30 @@ public class MainActivity extends Activity {
         tvTip.setText(tip(m, adv));
     }
 
+    private void cycleFpsTarget() {
+        int[] rates = Monitor.supportedRates(this);
+        int cur = prefs.getInt("fps_target", 0);
+        int next = 0;
+        if (cur == 0) next = rates[0];
+        else for (int i = 0; i < rates.length; i++) if (rates[i] == cur) next = i + 1 < rates.length ? rates[i + 1] : 0;
+        prefs.edit().putInt("fps_target", next).apply();
+        updateChrome();
+    }
+
     private void updateChrome() {
+        int ft = prefs.getInt("fps_target", 0);
+        tvFpsTarget2.setText("Taxa alvo do FPS: " + (ft == 0 ? "automática (" + Monitor.refreshRate(this) + " Hz)" : ft + " Hz"));
+        StringBuilder rs = new StringBuilder("Taxas da tela: ");
+        int[] all = Monitor.supportedRates(this);
+        for (int i = 0; i < all.length; i++) rs.append(i > 0 ? ", " : "").append(all[i]).append(" Hz");
+        tvRates.setText(rs);
         btnMonitor.setText(OverlayService.running ? "Parar monitor" : "Monitor flutuante");
         withIcon(btnMonitor, OverlayService.running ? R.drawable.ic_stop : R.drawable.ic_overlay, TXT);
         tvPos.setText("Posição do monitor: " + POS[prefs.getInt("pos", 0) % POS.length]);
         boolean ov = Settings.canDrawOverlays(this);
         tvOverlayPerm.setText("Sobrepor a outros apps: " + (ov ? "permitido" : "negado, toque para permitir"));
         boolean ok = Shell.granted();
-        tvDot.setText(ok ? "Shizuku ativo" : "Shizuku inativo");
+        tvDot.setText(Adb.connected() ? "ADB ativo" : ok ? "Shizuku ativo" : "Modo avançado off");
         tvDot.setTextColor(ok ? OK : WARN);
         GradientDrawable dot = new GradientDrawable();
         dot.setShape(GradientDrawable.OVAL);
@@ -512,9 +573,34 @@ public class MainActivity extends Activity {
         if (s.swapTotal == 0) t.append("Ative a Memória estendida (3 GB) nas configurações.\n");
         if (m.fps >= 0 && m.fps < 45 && !hot) t.append("FPS baixo sem calor: reduza efeitos/sombras no jogo ou use Liberar RAM.\n");
         if (m.fps >= 0 && !Float.isNaN(m.low1) && m.low1 < m.fps * 0.6f) t.append("Muita oscilação (1% low baixo): prefira 60 FPS fixo e efeitos menores.\n");
-        if (!adv) t.append("Ative o modo avançado (Shizuku) para medir FPS e temperatura de CPU/GPU.\n");
+        if (!adv) t.append("Ative o modo avançado para medir FPS e temperatura de CPU/GPU.\n");
         if (t.length() == 0) t.append("Tudo certo para jogar no gráfico alto estável.");
         return t.toString().trim();
+    }
+
+    private void adbAction() {
+        if (Adb.connected()) {
+            toast("Já conectado.");
+        } else if (Adb.paired(this)) {
+            Adb.connectAsync(this, true);
+            toast("Conectando…");
+        } else {
+            Adb.startPairing(this);
+            toast("Abra \"Parear dispositivo com código\" e digite o código na notificação.");
+            try {
+                startActivity(new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS));
+            } catch (Exception e) {
+                startActivity(new Intent(Settings.ACTION_DEVICE_INFO_SETTINGS));
+            }
+        }
+    }
+
+    private void updateAdb() {
+        boolean c = Adb.connected();
+        tvAdb.setText(c ? "Conectado: FPS, CPU/GPU, Game Mode e limpeza profunda liberados." : Adb.status());
+        btnAdb.setText(c ? "Conectado" : Adb.paired(this) ? "Conectar" : "Iniciar pareamento");
+        btnAdb.setEnabled(!c);
+        btnForget.setVisibility(Adb.paired(this) ? View.VISIBLE : View.GONE);
     }
 
     private void updateShizuku() {

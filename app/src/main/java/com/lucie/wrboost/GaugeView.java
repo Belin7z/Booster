@@ -19,10 +19,10 @@ public class GaugeView extends View {
         super(c);
         float d = c.getResources().getDisplayMetrics().density;
         track.setStyle(Paint.Style.STROKE);
-        track.setStrokeWidth(16 * d);
-        track.setColor(0xFF243152);
+        track.setStrokeWidth(12 * d);
+        track.setColor(0xFF1B2745);
         arc.setStyle(Paint.Style.STROKE);
-        arc.setStrokeWidth(16 * d);
+        arc.setStrokeWidth(12 * d);
         arc.setStrokeCap(Paint.Cap.ROUND);
         big.setColor(0xFFE8EEFC);
         big.setTextAlign(Paint.Align.CENTER);
@@ -47,6 +47,8 @@ public class GaugeView extends View {
         box.set(cx - s / 2 + pad, cy - s / 2 + pad, cx + s / 2 - pad, cy + s / 2 - pad);
         c.drawArc(box, 135, 270, false, track);
         arc.setColor(pct < 70 ? 0xFF2ECC71 : pct < 85 ? 0xFFF5A623 : 0xFFFF5252);
+        arc.setShadowLayer(14, 0, 0, arc.getColor() & 0x00FFFFFF | 0x99000000);
+        setLayerType(LAYER_TYPE_SOFTWARE, null);
         c.drawArc(box, 135, 270f * Math.min(100, pct) / 100f, false, arc);
         c.drawText(pct + "%", cx, cy + big.getTextSize() * 0.15f, big);
         c.drawText("RAM em uso", cx, cy - big.getTextSize() * 0.65f, small);
