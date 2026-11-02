@@ -20,6 +20,7 @@ public final class Monitor {
         public float low1 = Float.NaN;
         public int stutters;
         public int hz = 60;
+        public String cause;
     }
 
     public static int refreshRate(Context c) {
@@ -67,6 +68,7 @@ public final class Monitor {
     private static int fpsMin = Integer.MAX_VALUE, fpsMaxS, stutterBase, battStart, lastBatt, hzSeen;
     private static float cpuMax, gpuMax, battMax, cpuSum;
     private static long cpuN;
+    private static int dropHeat, dropRam, dropOther;
     private static float lowSum;
     private static int lowN;
     private static final List<Integer> fpsSer = new ArrayList<>(), cpuSer = new ArrayList<>();
@@ -142,6 +144,8 @@ public final class Monitor {
         s.cpuSrc = tm.cpuSrc;
 
         readFps(s);
+        s.cause = cause(s);
+        heatAlert(s);
         return s;
     }
 
@@ -217,7 +221,7 @@ public final class Monitor {
         cleaning = true;
         new Thread(() -> {
             try {
-                Booster.boost(app, Booster.level(app), g);
+                Booster.boost(app, Profiles.level(app, g), g);
             } finally {
                 cleaning = false;
             }
@@ -226,14 +230,57 @@ public final class Monitor {
 
     private static void beginAuto(String pkg) {
         startSession(pkg);
-        final android.content.SharedPreferences p = prefs();
-        if (p.getBoolean("auto_boost", true)) {
-            new Thread(() -> {
-                Booster.boost(app, Booster.level(app), pkg);
+        new Thread(() -> {
+            if (Profiles.clean(app, pkg)) {
+                Booster.Result r = Booster.boost(app, Profiles.level(app, pkg), pkg);
                 Booster.gameModePerformance(pkg);
-                if (p.getBoolean("dnd", true)) Booster.enableDnd(app);
-            }).start();
+                notifyInfo("Booster otimizou o jogo", r.forced + " apps fechados, " + (r.freedBytes / 1048576) + " MB liberados");
+            }
+            if (Profiles.dnd(app, pkg)) Booster.enableDnd(app);
+        }).start();
+    }
+
+    private static long lastAlert;
+
+    private static void notifyInfo(String title, String text) {
+        try {
+            android.app.NotificationManager nm = app.getSystemService(android.app.NotificationManager.class);
+            nm.createNotificationChannel(new android.app.NotificationChannel("alerts", "Alertas do jogo", android.app.NotificationManager.IMPORTANCE_HIGH));
+            nm.notify(2, new android.app.Notification.Builder(app, "alerts").setSmallIcon(R.drawable.ic_bolt)
+                    .setContentTitle(title).setContentText(text).setTimeoutAfter(8000).setAutoCancel(true).build());
+        } catch (Exception ignored) {
         }
+    }
+
+    public static int heatLimit(Context c) {
+        return c.getSharedPreferences("wr", Context.MODE_PRIVATE).getInt("heat_alert", 46);
+    }
+
+    // Avisa na tela quando CPU ou bateria passam do limite, no máximo a cada 2 minutos.
+    private static void heatAlert(Sample s) {
+        int lim = heatLimit(app);
+        if (lim <= 0 || activeGame() == null) return;
+        long now = System.currentTimeMillis();
+        if (now - lastAlert < 120_000) return;
+        if (!Float.isNaN(s.cpu) && s.cpu >= lim) {
+            lastAlert = now;
+            notifyInfo("Aparelho quente: CPU em " + Math.round(s.cpu) + "°C", "Baixe o gráfico do jogo, tire a capa ou faça uma pausa curta.");
+        } else if (s.sys.tempC >= 42) {
+            lastAlert = now;
+            notifyInfo("Bateria quente: " + Math.round(s.sys.tempC) + "°C", "Evite jogar carregando para não perder desempenho.");
+        }
+    }
+
+    // Causa provável de uma queda de FPS no instante atual, ou null.
+    public static String cause(Sample s) {
+        if (s.fps <= 0) return null;
+        int target = OverlayText.fpsTarget(prefs(), s);
+        if (s.fps >= 0.85f * target) return null;
+        int lim = heatLimit(app);
+        if (s.sys.thermalStatus >= 2 || (lim > 0 && !Float.isNaN(s.cpu) && s.cpu >= lim)) return "calor";
+        if (s.sys.ramUsedPct() >= 88) return "pouca RAM livre";
+        if (s.sys.battPct <= 15 && !s.sys.charging) return "bateria baixa";
+        return "limite do jogo";
     }
 
     private static void readFps(Sample s) {
@@ -288,6 +335,11 @@ public final class Monitor {
             battMax = Math.max(battMax, s.sys.tempC);
             if (s.sys.thermalStatus >= 2) throttleSec++;
             fpsSer.add(s.fps);
+            if (s.cause != null) {
+                if (s.cause.equals("calor")) dropHeat++;
+                else if (s.cause.equals("pouca RAM livre")) dropRam++;
+                else dropOther++;
+            }
             cpuSer.add(Float.isNaN(s.cpu) ? -1 : Math.round(s.cpu * 10));
             if (s.fps > 0) {
                 fpsSum += s.fps;
@@ -322,7 +374,7 @@ public final class Monitor {
         fpsMaxS = 0;
         cpuMax = gpuMax = battMax = lowSum = cpuSum = 0;
         lowN = 0;
-        fpsSer.clear();
+        dropHeat = dropRam = dropOther = 0;
         cpuSer.clear();
         gamePkg = pkg;
         awayTicks = 0;
@@ -382,6 +434,9 @@ public final class Monitor {
         r.battStart = battStart;
         r.battEnd = lastBatt;
         r.throttleSec = (int) throttleSec;
+        r.dropHeatSec = dropHeat;
+        r.dropRamSec = dropRam;
+        r.dropOtherSec = dropOther;
         r.cpuMax = cpuMax;
         r.cpuAvg = cpuN > 0 ? cpuSum / cpuN : 0;
         r.gpuMax = gpuMax;

@@ -24,7 +24,7 @@ public final class Reports {
     public static final class Record {
         public String pkg, label;
         public long start;
-        public int durSec, fpsAvg, fpsMin, fpsMax, low1, stutters, stablePct, hz, target, battStart, battEnd, throttleSec;
+        public int durSec, fpsAvg, fpsMin, fpsMax, low1, stutters, stablePct, hz, target, battStart, battEnd, throttleSec, dropHeatSec, dropRamSec, dropOtherSec;
         public float cpuMax, cpuAvg, gpuMax, battTempMax;
         public int ramMaxMb, ramAvgPct;
         public int[] fpsSeries = new int[0], cpuSeries = new int[0];
@@ -45,7 +45,7 @@ public final class Reports {
                     .put("fn", fpsMin).put("fx", fpsMax).put("lo", low1).put("st", stutters).put("sb", stablePct)
                     .put("hz", hz).put("tg", target).put("b0", battStart).put("b1", battEnd).put("th", throttleSec)
                     .put("cx", cpuMax).put("ca", cpuAvg).put("gx", gpuMax).put("bx", battTempMax)
-                    .put("rm", ramMaxMb).put("ra", ramAvgPct).put("ms", measured);
+                    .put("dh", dropHeatSec).put("dr", dropRamSec).put("do", dropOtherSec).put("rm", ramMaxMb).put("ra", ramAvgPct).put("ms", measured);
             o.put("fs", arr(fpsSeries)).put("cs", arr(cpuSeries));
             return o;
         }
@@ -72,6 +72,9 @@ public final class Reports {
             r.gpuMax = (float) o.optDouble("gx", 0);
             r.battTempMax = (float) o.optDouble("bx", 0);
             r.ramMaxMb = o.optInt("rm");
+            r.dropHeatSec = o.optInt("dh");
+            r.dropRamSec = o.optInt("dr");
+            r.dropOtherSec = o.optInt("do");
             r.ramAvgPct = o.optInt("ra");
             r.measured = o.optBoolean("ms");
             r.fpsSeries = ints(o.optJSONArray("fs"));
@@ -213,11 +216,40 @@ public final class Reports {
         if (r.throttleSec > 30) l.add("O aparelho limitou o desempenho por calor durante " + duration(r.throttleSec) + ".");
         if (r.cpuMax >= 50) l.add("CPU chegou a " + String.format(Locale.US, "%.0f", r.cpuMax) + "°C. Tire a capa e evite jogar carregando.");
         if (r.ramAvgPct >= 85) l.add("RAM ficou perto do limite (" + r.ramAvgPct + "%). Use Liberar RAM antes de jogar.");
-        if (r.battStart - r.battEnd >= 15 && r.durSec > 0) {
-            l.add("Bateria caiu " + (r.battStart - r.battEnd) + "% em " + duration(r.durSec) + ".");
+        if (r.battStart > r.battEnd && r.durSec >= 300) {
+            l.add("Bateria caiu " + (r.battStart - r.battEnd) + "% em " + duration(r.durSec) + " (cerca de "
+                    + Math.round((r.battStart - r.battEnd) * 3600f / r.durSec) + "% por hora).");
+        }
+        if (r.battTempMax >= 42) l.add("A bateria chegou a " + String.format(Locale.US, "%.0f", r.battTempMax) + "°C. Evite jogar carregando.");
+        int drops = r.dropHeatSec + r.dropRamSec + r.dropOtherSec;
+        if (drops >= 15) {
+            if (r.dropHeatSec * 2 >= drops) l.add("Maior parte das quedas de FPS (" + duration(drops) + ") coincidiu com calor alto.");
+            else if (r.dropRamSec * 2 >= drops) l.add("Maior parte das quedas de FPS (" + duration(drops) + ") coincidiu com pouca RAM livre.");
+            else l.add("Quedas de FPS por " + duration(drops) + " sem calor nem falta de RAM: provavelmente o limite do jogo ou do gráfico escolhido.");
         }
         if (l.isEmpty()) l.add("Sem problemas encontrados.");
         return l;
+    }
+
+    // Compara a sessão com a média das anteriores do mesmo jogo.
+    public static String compare(List<Record> newestFirst) {
+        if (newestFirst.size() < 2 || !newestFirst.get(0).measured) return null;
+        Record r = newestFirst.get(0);
+        long fps = 0, score = 0;
+        int n = 0;
+        for (int i = 1; i < newestFirst.size(); i++) {
+            Record x = newestFirst.get(i);
+            if (!x.measured) continue;
+            fps += x.fpsAvg;
+            score += x.score();
+            n++;
+        }
+        if (n == 0 || fps == 0) return null;
+        float avgFps = fps / (float) n;
+        int diff = Math.round((r.fpsAvg - avgFps) * 100f / avgFps);
+        int sd = r.score() - Math.round(score / (float) n);
+        String fp = Math.abs(diff) < 3 ? "FPS na média das suas últimas partidas" : "FPS " + Math.abs(diff) + "% " + (diff > 0 ? "acima" : "abaixo") + " da sua média";
+        return fp + " · nota " + (sd == 0 ? "igual" : (sd > 0 ? "+" : "") + sd + " pontos") + " (base: " + n + (n == 1 ? " sessão" : " sessões") + ")";
     }
 
     public static String text(Record r) {
