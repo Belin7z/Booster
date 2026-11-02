@@ -45,6 +45,7 @@ jobs:
         run: |
           PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
           RANGE="${PREV:+$PREV..}${GITHUB_REF_NAME}"
+          [ -z "$PREV" ] && RANGE="-1 ${GITHUB_REF_NAME}"
           {
             echo "## Novidades"
             git log --no-merges --format='- %s' "$RANGE"
