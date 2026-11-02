@@ -116,6 +116,56 @@ public class GamePanel {
         return g;
     }
 
+    private boolean docked;
+    private android.animation.ValueAnimator slide;
+    private final Runnable dockRun = this::dock;
+
+    private int screenH() {
+        return wm.getCurrentWindowMetrics().getBounds().height();
+    }
+
+    private void moveBubble(int x, int y) {
+        if (bubble == null) return;
+        bubbleLp.x = x;
+        bubbleLp.y = y;
+        try {
+            wm.updateViewLayout(bubble, bubbleLp);
+        } catch (Exception ignored) {
+        }
+    }
+
+    // Parada, a bolha fica mais discreta: some meia para fora da borda (se estiver perto) e fica translúcida.
+    private void dock() {
+        if (bubble == null || panel != null || docked || !prefs().getBoolean("bubble_dock", true)) return;
+        docked = true;
+        bubble.animate().alpha(Math.min(bubbleAlpha(), 0.4f)).setDuration(250).start();
+        int size = bubbleLp.width, w = screenW(), edge = (int) (28 * d);
+        int target = bubbleLp.x <= edge ? -size / 2 : bubbleLp.x + size >= w - edge ? w - size / 2 : bubbleLp.x;
+        if (target == bubbleLp.x) return;
+        if (slide != null) slide.cancel();
+        slide = android.animation.ValueAnimator.ofInt(bubbleLp.x, target);
+        slide.setDuration(220);
+        slide.addUpdateListener(a -> moveBubble((int) a.getAnimatedValue(), bubbleLp.y));
+        slide.start();
+    }
+
+    private void undock() {
+        h.removeCallbacks(dockRun);
+        if (slide != null) slide.cancel();
+        if (bubble == null) return;
+        bubble.animate().cancel();
+        bubble.setAlpha(bubbleAlpha());
+        if (docked) {
+            docked = false;
+            moveBubble(Math.max(0, Math.min(screenW() - bubbleLp.width, bubbleLp.x)), bubbleLp.y);
+        }
+    }
+
+    private void scheduleDock() {
+        h.removeCallbacks(dockRun);
+        h.postDelayed(dockRun, 2500);
+    }
+
     private void addBubble() {
         ImageView v = new ImageView(c);
         v.setImageResource(R.drawable.ic_bolt);
@@ -128,14 +178,18 @@ public class GamePanel {
         v.setBackground(g);
         v.setAlpha(bubbleAlpha());
         sig = currentSig();
+        docked = false;
         final int size = bubbleSize();
         bubbleLp = new WindowManager.LayoutParams(size, size, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN, PixelFormat.TRANSLUCENT);
         bubbleLp.gravity = Gravity.TOP | Gravity.START;
-        SharedPreferences p = c.getSharedPreferences("wr", Context.MODE_PRIVATE);
-        bubbleLp.x = rightSide() ? screenW() - size : 0;
-        bubbleLp.y = p.getInt("bubble_y", (int) (120 * d));
+        SharedPreferences p = prefs();
+        int rangeX = Math.max(1, screenW() - size), rangeY = Math.max(1, screenH() - size);
+        float fx = p.getFloat("bubble_fx", rightSide() ? 1f : 0f);
+        float fy = p.getFloat("bubble_fy", p.getInt("bubble_y", (int) (120 * d)) / (float) rangeY);
+        bubbleLp.x = Math.round(Math.max(0f, Math.min(1f, fx)) * rangeX);
+        bubbleLp.y = Math.round(Math.max(0f, Math.min(1f, fy)) * rangeY);
         bubbleLp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         v.setOnTouchListener(new View.OnTouchListener() {
             float sx, sy;
@@ -146,6 +200,7 @@ public class GamePanel {
             public boolean onTouch(View view, MotionEvent e) {
                 switch (e.getAction()) {
                     case MotionEvent.ACTION_DOWN:
+                        undock();
                         sx = e.getRawX();
                         sy = e.getRawY();
                         ox = bubbleLp.x;
@@ -156,26 +211,20 @@ public class GamePanel {
                         float dx = e.getRawX() - sx, dy = e.getRawY() - sy;
                         if (Math.abs(dx) > 8 * d || Math.abs(dy) > 8 * d) moved = true;
                         if (moved) {
-                            bubbleLp.x = Math.max(0, (int) (ox + dx));
-                            bubbleLp.y = Math.max(0, (int) (oy + dy));
-                            try {
-                                wm.updateViewLayout(bubble, bubbleLp);
-                            } catch (Exception ignored) {
-                            }
+                            int nx = Math.max(0, Math.min(screenW() - size, (int) (ox + dx)));
+                            int ny = Math.max(0, Math.min(screenH() - size, (int) (oy + dy)));
+                            moveBubble(nx, ny);
                         }
                         return true;
                     case MotionEvent.ACTION_UP:
                         if (!moved) {
                             openPanel();
                         } else {
+                            int rx = Math.max(1, screenW() - size), ry = Math.max(1, screenH() - size);
                             boolean right = bubbleLp.x + size / 2 > screenW() / 2;
-                            bubbleLp.x = right ? screenW() - size : 0;
-                            c.getSharedPreferences("wr", Context.MODE_PRIVATE).edit().putInt("bubble_side", right ? 1 : 0).apply();
-                            try {
-                                wm.updateViewLayout(bubble, bubbleLp);
-                            } catch (Exception ignored) {
-                            }
-                            c.getSharedPreferences("wr", Context.MODE_PRIVATE).edit().putInt("bubble_y", bubbleLp.y).apply();
+                            prefs().edit().putFloat("bubble_fx", bubbleLp.x / (float) rx).putFloat("bubble_fy", bubbleLp.y / (float) ry)
+                                    .putInt("bubble_side", right ? 1 : 0).apply();
+                            scheduleDock();
                         }
                         return true;
                 }
@@ -185,11 +234,14 @@ public class GamePanel {
         try {
             wm.addView(v, bubbleLp);
             bubble = v;
+            scheduleDock();
         } catch (Exception ignored) {
         }
     }
 
     private void removeBubble() {
+        h.removeCallbacks(dockRun);
+        if (slide != null) slide.cancel();
         if (bubble != null) {
             try {
                 wm.removeView(bubble);
@@ -198,7 +250,6 @@ public class GamePanel {
             bubble = null;
         }
     }
-
     private TextView text(String s, int sp, int color, boolean bold) {
         TextView t = new TextView(c);
         t.setText(s);
@@ -436,6 +487,7 @@ public class GamePanel {
             } catch (Exception ignored) {
             }
             panel = null;
+            scheduleDock();
         }
     }
 

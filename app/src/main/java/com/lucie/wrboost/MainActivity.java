@@ -392,10 +392,12 @@ public class MainActivity extends Activity {
         LinearLayout gpc = card();
         sw(gpc, "Bolha do Booster durante o jogo", "panel", true)
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("panel", on).apply());
+        sw(gpc, "Esconder na borda quando parada", "bubble_dock", true)
+                .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("bubble_dock", on).apply());
         tvBubble = rowItem(gpc, "", R.drawable.ic_overlay, v -> cycleBubble());
         rowItem(gpc, "Apps do painel (acesso sem sair do jogo)", R.drawable.ic_add, v -> pickApps("panel_apps", "Apps no painel do jogo", GamePanel.apps(this)));
         set.addView(gpc);
-        set.addView(text("Durante o jogo aparece uma bolha na lateral da tela. Toque nela para liberar RAM, ligar o Não perturbe ou abrir outros apps. Com o modo avançado conectado, o app abre em janela flutuante quando o sistema permitir.", 12, MUT, false));
+        set.addView(text("A bolha aparece sozinha ao entrar em qualquer jogo da sua biblioteca, mesmo aberto fora do app (precisa do acesso de uso). Arraste-a para qualquer ponto da tela; parada, ela fica translúcida e se esconde na borda. Toque nela para liberar RAM, ligar o Não perturbe ou abrir outros apps. Com o modo avançado conectado, o app abre em janela flutuante quando o sistema permitir.", 12, MUT, false));
         set.addView(section("DETECÇÃO DE JOGOS"));
         LinearLayout det = card();
         sw(det, "Detectar jogos automaticamente", "auto", true).setOnCheckedChangeListener((v, on) -> {
