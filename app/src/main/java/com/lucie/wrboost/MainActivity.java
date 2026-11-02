@@ -52,7 +52,7 @@ public class MainActivity extends Activity {
     private Button btnAdb, btnForget;
     private LinearLayout gamesList, reportsList, ptDays, ptGames;
     private BarChartView ptBars;
-    private TextView tvPtToday, tvPtWeek, tvPtMonth, ptSummary, tvHomeToday, tvLevel, tvKeep, tvAutoClean;
+    private TextView tvHeat, tvBubble, tvPtToday, tvPtWeek, tvPtMonth, ptSummary, tvHomeToday, tvLevel, tvKeep, tvAutoClean;
     private LinearLayout ptPerm;
     private int ptTick;
     private TextView tvUsage;
@@ -325,10 +325,18 @@ public class MainActivity extends Activity {
         tvAutoClean = rowItem(cl, "", R.drawable.ic_timer, v -> cycleAutoClean());
         set.addView(cl);
         set.addView(text("Os níveis Equilibrada e Máxima fecham apps de verdade e precisam do modo avançado conectado. Na Máxima, só o telefone, as mensagens SMS e os apps que você marcar sobrevivem; o resto precisa ser aberto de novo. A limpeza automática roda durante o jogo quando a RAM passa do limite, no máximo a cada 3 minutos.", 12, MUT, false));
+        set.addView(section("ALERTAS E INÍCIO"));
+        LinearLayout al = card();
+        tvHeat = rowItem(al, "", R.drawable.ic_thermo, v -> cycleHeat());
+        sw(al, "Iniciar o monitor ao ligar o celular", "boot", true)
+                .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("boot", on).apply());
+        set.addView(al);
+        set.addView(text("No Xiaomi, permita também o início automático do Booster nas permissões do app para o início com o celular funcionar.", 12, MUT, false));
         set.addView(section("PAINEL NO JOGO"));
         LinearLayout gpc = card();
         sw(gpc, "Bolha do Booster durante o jogo", "panel", true)
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("panel", on).apply());
+        tvBubble = rowItem(gpc, "", R.drawable.ic_overlay, v -> cycleBubble());
         rowItem(gpc, "Apps do painel (acesso sem sair do jogo)", R.drawable.ic_add, v -> pickApps("panel_apps", "Apps no painel do jogo", GamePanel.apps(this)));
         set.addView(gpc);
         set.addView(text("Durante o jogo aparece uma bolha na lateral da tela. Toque nela para liberar RAM, ligar o Não perturbe ou abrir outros apps. Com o modo avançado conectado, o app abre em janela flutuante quando o sistema permitir.", 12, MUT, false));
@@ -647,6 +655,10 @@ public class MainActivity extends Activity {
                 + (Shell.granted() ? "" : " (precisa do modo avançado)"));
         int kept = Booster.userKeep(this).size();
         tvKeep.setText("Apps protegidos: " + (kept == 0 ? "nenhum escolhido" : kept + " escolhidos"));
+        int hl = prefs.getInt("heat_alert", 46);
+        tvHeat.setText("Alerta de calor: " + (hl == 0 ? "desligado" : "CPU acima de " + hl + "°C"));
+        String[] sz = {"pequena", "média", "grande"}, al = {"bem transparente", "transparente", "opaca"};
+        tvBubble.setText("Bolha: " + sz[prefs.getInt("bubble_size", 1)] + ", " + al[prefs.getInt("bubble_alpha", 1)]);
         int ap = prefs.getInt("auto_clean_pct", 0);
         tvAutoClean.setText("Limpar sozinho no jogo: " + (ap == 0 ? "desligado" : "RAM acima de " + ap + "%"));
         int ft = prefs.getInt("fps_target", 0);
@@ -776,14 +788,15 @@ public class MainActivity extends Activity {
         prefs.edit().putString("last_game", pkg).apply();
         btnPlay.setEnabled(false);
         tvResult.setText("Otimizando…");
-        final int lvl = Booster.level(this);
+        final int lvl = Profiles.level(this, pkg);
+        final boolean dnd = Profiles.rawDnd(this, pkg) >= 0 ? Profiles.dnd(this, pkg) : swDnd.isChecked();
         new Thread(() -> {
             Booster.Result r = Booster.boost(this, lvl, pkg);
             Booster.gameModePerformance(pkg);
             h.post(() -> {
                 btnPlay.setEnabled(true);
                 showResult(r);
-                if (swDnd.isChecked()) Booster.enableDnd(this);
+                if (dnd) Booster.enableDnd(this);
                 if (Monitor.sessionActive()) Monitor.endSession();
                 Monitor.startSession(pkg);
                 startForegroundService(new Intent(this, OverlayService.class));
@@ -870,7 +883,7 @@ public class MainActivity extends Activity {
 
     private void showGameOptions(final Games.Game g) {
         int t = gameTarget(g.pkg);
-        String[] items = {"Jogar", "Taxa alvo de FPS: " + (t == 0 ? "padrão" : t + " Hz"), "Ver relatório", "Remover da lista"};
+        String[] items = {"Jogar", "Taxa alvo de FPS: " + (t == 0 ? "padrão" : t + " Hz"), "Perfil do jogo", "Ver relatório", "Remover da lista"};
         dialog().setTitle(g.label).setItems(items, (d, which) -> {
             if (which == 0) {
                 play(g.pkg);
@@ -882,11 +895,34 @@ public class MainActivity extends Activity {
                 prefs.edit().putInt("gt_" + g.pkg, next).apply();
                 toast(next == 0 ? "Taxa alvo: padrão" : "Taxa alvo: " + next + " Hz");
             } else if (which == 2) {
+                showProfile(g);
+            } else if (which == 3) {
                 showReportDialog(g.pkg, g.label);
             } else {
                 Games.remove(this, g.pkg);
                 refreshGames();
             }
+        }).setNegativeButton("Fechar", null).show();
+    }
+
+    private String levelLabel(int v) {
+        return v < 0 ? "geral" : Booster.LEVEL_NAMES[v];
+    }
+
+    private String onOff(int v) {
+        return v < 0 ? "geral" : v == 1 ? "ligado" : "desligado";
+    }
+
+    // Configuração própria de cada jogo; "geral" usa o que está em Configurações.
+    private void showProfile(final Games.Game g) {
+        String[] items = {"Nível da limpeza: " + levelLabel(Profiles.rawLevel(this, g.pkg)),
+                "Limpar RAM ao abrir: " + onOff(Profiles.rawClean(this, g.pkg)),
+                "Não perturbe: " + onOff(Profiles.rawDnd(this, g.pkg))};
+        dialog().setTitle("Perfil: " + g.label).setItems(items, (d, which) -> {
+            if (which == 0) Profiles.setLevel(this, g.pkg, Profiles.next(Profiles.rawLevel(this, g.pkg), 2));
+            else if (which == 1) Profiles.setClean(this, g.pkg, Profiles.next(Profiles.rawClean(this, g.pkg), 1));
+            else Profiles.setDnd(this, g.pkg, Profiles.next(Profiles.rawDnd(this, g.pkg), 1));
+            showProfile(g);
         }).setNegativeButton("Fechar", null).show();
     }
 
@@ -997,6 +1033,24 @@ public class MainActivity extends Activity {
         g2.set(toFloats(r.cpuSeries, 10));
         l.addView(g2, graphParams());
 
+        String cmp = Reports.compare(rs);
+        if (cmp != null) {
+            TextView ct = text(cmp, 12, 0xFF4DA3FF, false);
+            ct.setPadding(0, (int) dp(8), 0, 0);
+            l.addView(ct);
+        }
+        if (rs.size() >= 3) {
+            int n = Math.min(15, rs.size());
+            float[] sc = new float[n];
+            for (int i = 0; i < n; i++) {
+                Reports.Record x = rs.get(n - 1 - i);
+                sc[i] = x.measured ? x.score() : Float.NaN;
+            }
+            GraphView g3 = new GraphView(this, "Evolução da nota (últimas " + n + " sessões)", 0xFF3DDC97, 0, 100);
+            g3.set(sc);
+            l.addView(g3, graphParams());
+        }
+
         TextView it = text("Análise", 14, TXT, true);
         it.setPadding(0, (int) dp(12), 0, (int) dp(2));
         l.addView(it);
@@ -1021,6 +1075,17 @@ public class MainActivity extends Activity {
             startActivity(Intent.createChooser(i, "Compartilhar relatório"));
         });
         l.addView(share, btnParams(44));
+        Button img = button("Compartilhar como imagem", 0xFF1D2A4A, TXT);
+        withIcon(img, R.drawable.ic_share, TXT);
+        img.setTextSize(14);
+        img.setOnClickListener(v -> {
+            try {
+                ReportImage.share(this, r);
+            } catch (Exception e) {
+                toast("Não foi possível gerar a imagem.");
+            }
+        });
+        l.addView(img, btnParams(44));
         Button del = button("Apagar histórico deste jogo", 0xFF3A1D24, BAD);
         withIcon(del, R.drawable.ic_delete, BAD);
         del.setTextSize(14);
@@ -1082,6 +1147,23 @@ public class MainActivity extends Activity {
     }
 
     private static final int[] AUTO_PCT = {0, 75, 80, 85, 90};
+
+    private static final int[] HEAT = {0, 42, 44, 46, 48, 50};
+
+    private void cycleHeat() {
+        int cur = prefs.getInt("heat_alert", 46), next = HEAT[0];
+        for (int i = 0; i < HEAT.length; i++) if (HEAT[i] == cur) next = HEAT[(i + 1) % HEAT.length];
+        prefs.edit().putInt("heat_alert", next).apply();
+        updateChrome();
+    }
+
+    private void cycleBubble() {
+        int s = prefs.getInt("bubble_size", 1), a = prefs.getInt("bubble_alpha", 1);
+        // percorre as 9 combinações de tamanho e transparência
+        int k = (s * 3 + a + 1) % 9;
+        prefs.edit().putInt("bubble_size", k / 3).putInt("bubble_alpha", k % 3).apply();
+        updateChrome();
+    }
 
     private void cycleAutoClean() {
         int cur = prefs.getInt("auto_clean_pct", 0), next = AUTO_PCT[0];
