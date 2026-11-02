@@ -33,7 +33,9 @@ import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final int BG = 0xFF0B1220, CARD = 0xFF141D33, TXT = 0xFFE8EEFC, MUT = 0xFF8FA0C7;
+    private static int BG, CARD, TXT, MUT;
+    public static final String EXTRA_INSTALL = "install";
+    private static int resumePage = -1;
     private static final int OK = 0xFF2ECC71, WARN = 0xFFF5A623, BAD = 0xFFFF5252;
 
     private final List<View> pages = new ArrayList<>();
@@ -61,7 +63,9 @@ public class MainActivity extends Activity {
     private TextView tvUsage;
     private int reportsVer = -1;
     private Button btnPlay, btnBoost, btnShizuku, btnUpdate;
-    private TextView tvUpdate;
+    private TextView tvUpdate, tvTheme, tvAccent, tvDiag;
+    private FrameLayout rootView;
+    private int curPage;
     private Updater.Info pending;
     private SharedPreferences prefs;
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -81,6 +85,12 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         prefs = getSharedPreferences("wr", MODE_PRIVATE);
+        Theme.load(this);
+        BG = Theme.BG;
+        CARD = Theme.CARD;
+        TXT = Theme.TXT;
+        MUT = Theme.MUT;
+        if (Theme.light) getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
 
@@ -131,8 +141,8 @@ public class MainActivity extends Activity {
         tvTip = text("", 14, TXT, false);
         tipCard.addView(tvTip);
         home.addView(tipCard);
-        btnPlay = button("Jogar", 0xFF4DA3FF, 0xFF04101F);
-        withIcon(btnPlay, R.drawable.ic_play, 0xFF04101F);
+        btnPlay = button("Jogar", Theme.ACC, Theme.ONACC);
+        withIcon(btnPlay, R.drawable.ic_play, Theme.ONACC);
         btnPlay.setOnClickListener(v -> {
             String g = lastGame();
             if (g == null) showPage(1);
@@ -140,11 +150,11 @@ public class MainActivity extends Activity {
         });
         home.addView(btnPlay, btnParams(56));
         LinearLayout acts = new LinearLayout(this);
-        btnBoost = button("Liberar RAM", 0xFF1D2A4A, TXT);
+        btnBoost = button("Liberar RAM", Theme.BTN2, TXT);
         withIcon(btnBoost, R.drawable.ic_memory, TXT);
         btnBoost.setTextSize(14);
         btnBoost.setOnClickListener(v -> boostOnly());
-        btnMonitor = button("", 0xFF1D2A4A, TXT);
+        btnMonitor = button("", Theme.BTN2, TXT);
         btnMonitor.setTextSize(14);
         btnMonitor.setOnClickListener(v -> toggleMonitor());
         LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, (int) dp(48), 1);
@@ -163,7 +173,7 @@ public class MainActivity extends Activity {
         // Jogos
         LinearLayout gm = page("Jogos", R.drawable.ic_gamepad);
         gm.addView(text("Os jogos instalados são detectados automaticamente. Se algum não aparecer, adicione manualmente. Toque no jogo para opções.", 12, MUT, false));
-        Button addGame = button("Adicionar jogo", 0xFF1D2A4A, TXT);
+        Button addGame = button("Adicionar jogo", Theme.BTN2, TXT);
         withIcon(addGame, R.drawable.ic_add, TXT);
         addGame.setTextSize(14);
         addGame.setOnClickListener(v -> pickGames());
@@ -174,6 +184,22 @@ public class MainActivity extends Activity {
 
         // Relatórios
         LinearLayout rp = page("Relatórios", R.drawable.ic_chart);
+        LinearLayout exp = new LinearLayout(this);
+        Button csv = button("Exportar CSV", Theme.BTN2, TXT);
+        withIcon(csv, R.drawable.ic_share, TXT);
+        csv.setTextSize(13);
+        csv.setOnClickListener(v -> export(false));
+        Button pdf = button("Exportar PDF", Theme.BTN2, TXT);
+        withIcon(pdf, R.drawable.ic_share, TXT);
+        pdf.setTextSize(13);
+        pdf.setOnClickListener(v -> export(true));
+        LinearLayout.LayoutParams e1 = new LinearLayout.LayoutParams(0, (int) dp(44), 1);
+        e1.setMargins(0, 0, (int) dp(4), 0);
+        LinearLayout.LayoutParams e2 = new LinearLayout.LayoutParams(0, (int) dp(44), 1);
+        e2.setMargins((int) dp(4), 0, 0, 0);
+        exp.addView(csv, e1);
+        exp.addView(pdf, e2);
+        rp.addView(exp);
         reportsList = new LinearLayout(this);
         reportsList.setOrientation(LinearLayout.VERTICAL);
         rp.addView(reportsList);
@@ -182,7 +208,7 @@ public class MainActivity extends Activity {
         LinearLayout pt = page("Tempo de jogo", R.drawable.ic_calendar);
         ptPerm = card();
         ptPerm.addView(text("O tempo de jogo vem do histórico de uso do Android, então conta mesmo quando você abre o jogo fora do Booster. Para isso, permita o acesso ao uso de apps.", 13, MUT, false));
-        Button grant = button("Permitir acesso ao uso", 0xFF4DA3FF, 0xFF04101F);
+        Button grant = button("Permitir acesso ao uso", Theme.ACC, Theme.ONACC);
         grant.setTextSize(14);
         grant.setOnClickListener(v -> openAction(Settings.ACTION_USAGE_ACCESS_SETTINGS));
         ptPerm.addView(grant, btnParams(44));
@@ -213,7 +239,7 @@ public class MainActivity extends Activity {
 
         // Desempenho
         LinearLayout perf = page("Desempenho", R.drawable.ic_speed);
-        gFps = new GraphView(this, "FPS (últimos 2 min)", 0xFF4DA3FF, 0, 60);
+        gFps = new GraphView(this, "FPS (últimos 2 min)", Theme.ACC, 0, 60);
         gCpu = new GraphView(this, "Temperatura da CPU °C", 0xFFFF7A59, 30, 50);
         perf.addView(gFps, graphParams());
         perf.addView(gCpu, graphParams());
@@ -237,11 +263,11 @@ public class MainActivity extends Activity {
         adbCard.addView(text("Conexão integrada (sem Shizuku)", 15, TXT, true));
         tvAdb = text("", 13, MUT, false);
         adbCard.addView(tvAdb);
-        btnAdb = button("", 0xFF4DA3FF, 0xFF04101F);
+        btnAdb = button("", Theme.ACC, Theme.ONACC);
         btnAdb.setTextSize(14);
         btnAdb.setOnClickListener(v -> adbAction());
         adbCard.addView(btnAdb, btnParams(46));
-        btnForget = button("Esquecer pareamento", 0xFF1D2A4A, TXT);
+        btnForget = button("Esquecer pareamento", Theme.BTN2, TXT);
         btnForget.setTextSize(13);
         btnForget.setOnClickListener(v -> {
             Adb.forget(this);
@@ -254,7 +280,7 @@ public class MainActivity extends Activity {
         advCard.addView(text("Alternativa: Shizuku", 15, TXT, true));
         tvShizuku = text("", 13, MUT, false);
         advCard.addView(tvShizuku);
-        btnShizuku = button("", 0xFF1D2A4A, TXT);
+        btnShizuku = button("", Theme.BTN2, TXT);
         btnShizuku.setTextSize(14);
         btnShizuku.setOnClickListener(v -> shizukuAction());
         advCard.addView(btnShizuku, btnParams(46));
@@ -266,11 +292,21 @@ public class MainActivity extends Activity {
         LinearLayout upCard = card();
         tvUpdate = text("Versão instalada: " + Updater.installedName(this), 13, MUT, false);
         upCard.addView(tvUpdate);
-        btnUpdate = button("Verificar atualizações", 0xFF1D2A4A, TXT);
+        btnUpdate = button("Verificar atualizações", Theme.BTN2, TXT);
         btnUpdate.setTextSize(14);
         btnUpdate.setOnClickListener(v -> onUpdateClick());
         upCard.addView(btnUpdate, btnParams(46));
         up.addView(upCard);
+        LinearLayout upOpt = card();
+        sw(upOpt, "Baixar atualizações sozinho (só no Wi-Fi)", "auto_update", true)
+                .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("auto_update", on).apply());
+        up.addView(upOpt);
+        up.addView(text("Quando houver versão nova, o Booster baixa e confere a integridade em segundo plano e avisa por notificação. Você só confirma a instalação.", 12, MUT, false));
+        Button hist = button("Histórico de versões", Theme.BTN2, TXT);
+        withIcon(hist, R.drawable.ic_info, TXT);
+        hist.setTextSize(14);
+        hist.setOnClickListener(v -> showHistory());
+        up.addView(hist, btnParams(46));
 
         // Sessão
         LinearLayout ses = page("Sessão", R.drawable.ic_timer);
@@ -279,7 +315,7 @@ public class MainActivity extends Activity {
         tvLast = text(prefs.getString("last", "Nenhuma sessão ainda."), 13, MUT, false);
         last.addView(tvLast);
         ses.addView(last);
-        Button end = button("Encerrar sessão", 0xFF1D2A4A, TXT);
+        Button end = button("Encerrar sessão", Theme.BTN2, TXT);
         withIcon(end, R.drawable.ic_stop, TXT);
         end.setTextSize(14);
         end.setOnClickListener(v -> endSession());
@@ -307,7 +343,7 @@ public class MainActivity extends Activity {
         set.addView(section("ITENS DO MONITOR"));
         LinearLayout items = card();
         String[][] its = {{"FPS", "ov_fps", "1"}, {"FPS 1% low", "ov_low", "0"}, {"Temperatura da CPU", "ov_cpu", "1"},
-                {"Temperatura da GPU", "ov_gpu", "1"}, {"Memória RAM", "ov_ram", "1"}, {"Bateria", "ov_bat", "0"},
+                {"Temperatura da GPU", "ov_gpu", "1"}, {"Memória RAM", "ov_ram", "1"}, {"Bateria", "ov_bat", "0"}, {"Ping da rede", "ov_ping", "0"},
                 {"Layout horizontal", "ov_h", "0"}};
         for (String[] it : its) {
             final String key = it[1];
@@ -333,8 +369,25 @@ public class MainActivity extends Activity {
         tvHeat = rowItem(al, "", R.drawable.ic_thermo, v -> cycleHeat());
         sw(al, "Iniciar o monitor ao ligar o celular", "boot", true)
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("boot", on).apply());
+        sw(al, "Avisar se a temperatura vai subir rápido", "heat_predict", true)
+                .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("heat_predict", on).apply());
+        sw(al, "Avisar quando o ping ou a perda de pacotes piorar", "net_alert", true)
+                .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("net_alert", on).apply());
+        sw(al, "Resumo da partida em notificação", "post_summary", true)
+                .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("post_summary", on).apply());
         set.addView(al);
         set.addView(text("No Xiaomi, permita também o início automático do Booster nas permissões do app para o início com o celular funcionar.", 12, MUT, false));
+        set.addView(section("APARÊNCIA"));
+        LinearLayout ap2 = card();
+        tvTheme = rowItem(ap2, "Tema: " + Theme.MODES[Theme.mode(this)], R.drawable.ic_tune, v -> {
+            prefs.edit().putInt("theme", (Theme.mode(this) + 1) % Theme.MODES.length).apply();
+            restyle();
+        });
+        tvAccent = rowItem(ap2, "Cor de destaque: " + Theme.ACCENT_NAMES[Theme.accentIndex(this)], R.drawable.ic_tune, v -> {
+            prefs.edit().putInt("accent", (Theme.accentIndex(this) + 1) % Theme.ACCENTS.length).apply();
+            restyle();
+        });
+        set.addView(ap2);
         set.addView(section("PAINEL NO JOGO"));
         LinearLayout gpc = card();
         sw(gpc, "Bolha do Booster durante o jogo", "panel", true)
@@ -376,6 +429,42 @@ public class MainActivity extends Activity {
                 + "notificam até serem abertos de novo. Para mais RAM de verdade: Memória estendida em 3 GB "
                 + "(Configurações → Sobre o telefone → Memória), Game Turbo e reinício semanal.", 12, MUT, false));
 
+        LinearLayout dg = page("Diagnóstico", R.drawable.ic_info);
+        LinearLayout dgc = card();
+        tvDiag = text("", 13, TXT, false);
+        dgc.addView(tvDiag);
+        dg.addView(dgc);
+        Button send = button("Enviar relatório de erros", Theme.ACC, Theme.ONACC);
+        withIcon(send, R.drawable.ic_share, Theme.ONACC);
+        send.setTextSize(14);
+        send.setOnClickListener(v -> startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND).setType("text/plain")
+                .putExtra(Intent.EXTRA_SUBJECT, "Relatório do Booster").putExtra(Intent.EXTRA_TEXT, CrashLog.report(this)), "Enviar relatório")));
+        dg.addView(send, btnParams(46));
+        Button viewLog = button("Ver registro de erros", Theme.BTN2, TXT);
+        viewLog.setTextSize(14);
+        viewLog.setOnClickListener(v -> {
+            String log = CrashLog.read(this);
+            ScrollView lsv = new ScrollView(this);
+            TextView lt = text(log.isEmpty() ? "Nenhum erro registrado." : log, 11, TXT, false);
+            lt.setTextIsSelectable(true);
+            lt.setPadding((int) dp(16), (int) dp(12), (int) dp(16), (int) dp(12));
+            lsv.addView(lt);
+            dialog().setTitle("Registro de erros").setView(lsv).setPositiveButton("Fechar", null).show();
+        });
+        dg.addView(viewLog, btnParams(46));
+        Button clr = button("Limpar registro", Theme.BTN2, TXT);
+        clr.setTextSize(14);
+        clr.setOnClickListener(v -> {
+            CrashLog.clear(this);
+            toast("Registro limpo.");
+        });
+        dg.addView(clr, btnParams(46));
+        Button tut = button("Rever o tutorial", Theme.BTN2, TXT);
+        tut.setTextSize(14);
+        tut.setOnClickListener(v -> showTutorial());
+        dg.addView(tut, btnParams(46));
+        dg.addView(text("O ping é medido com conexões rápidas ao servidor 1.1.1.1 (Cloudflare) só durante o jogo; nenhum dado seu é enviado.", 12, MUT, false));
+
         scrim = new View(this);
         scrim.setBackgroundColor(0x99000000);
         scrim.setVisibility(View.GONE);
@@ -389,8 +478,8 @@ public class MainActivity extends Activity {
         LinearLayout brand = new LinearLayout(this);
         brand.setGravity(Gravity.CENTER_VERTICAL);
         ImageView logo = new ImageView(this);
-        logo.setImageDrawable(icon(R.drawable.ic_bolt, 0xFF04101F));
-        logo.setBackground(round(0xFF4DA3FF, 10));
+        logo.setImageDrawable(icon(R.drawable.ic_bolt, Theme.ONACC));
+        logo.setBackground(round(Theme.ACC, 10));
         logo.setPadding((int) dp(8), (int) dp(8), (int) dp(8), (int) dp(8));
         brand.addView(logo, new LinearLayout.LayoutParams((int) dp(40), (int) dp(40)));
         LinearLayout names = new LinearLayout(this);
@@ -401,7 +490,7 @@ public class MainActivity extends Activity {
         brand.addView(names);
         drawer.addView(brand);
         View gap = new View(this);
-        gap.setBackgroundColor(0xFF22304F);
+        gap.setBackgroundColor(Theme.LINE);
         LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) dp(1));
         gp.setMargins(0, (int) dp(20), 0, (int) dp(12));
         drawer.addView(gap, gp);
@@ -444,9 +533,17 @@ public class MainActivity extends Activity {
         root.addView(exitPill, plp);
         exitPill.setTranslationX(dp(200));
 
+        rootView = root;
         setContentView(root);
-        showPage(0);
+        showPage(resumePage >= 0 && resumePage < pages.size() ? resumePage : 0);
+        resumePage = -1;
         if (b == null) playIntro(root, main);
+        h.postDelayed(() -> {
+            if (isDestroyed()) return;
+            if (!prefs.getBoolean("onboarded", false)) showTutorial();
+            else showWhatsNew();
+        }, b == null ? 1700 : 300);
+        handleIntent(getIntent());
         if (prefs.getBoolean("auto", true) && !OverlayService.running) startForegroundService(new Intent(this, OverlayService.class));
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
         if (System.currentTimeMillis() - prefs.getLong("lastCheck", 0) > 6 * 3600_000L) checkUpdate(false);
@@ -468,11 +565,12 @@ public class MainActivity extends Activity {
     }
 
     private void showPage(int idx) {
+        curPage = idx;
         for (int i = 0; i < pages.size(); i++) {
             pages.get(i).setVisibility(i == idx ? View.VISIBLE : View.GONE);
             TextView it = navItems.get(i);
-            int col = i == idx ? 0xFF4DA3FF : 0xFFB8C4E0;
-            it.setBackground(i == idx ? round(0xFF1A2745, 10) : null);
+            int col = i == idx ? Theme.ACC : Theme.NAVTXT;
+            it.setBackground(i == idx ? round(Theme.SEL, 10) : null);
             it.setTextColor(col);
             it.setCompoundDrawablesRelativeWithIntrinsicBounds(icon(pageIcons.get(i), col), null, null, null);
         }
@@ -597,8 +695,8 @@ public class MainActivity extends Activity {
         splash.setBackgroundColor(BG);
         splash.setClickable(true);
         final ImageView logo = new ImageView(this);
-        logo.setImageDrawable(icon(R.drawable.ic_bolt, 0xFF04101F));
-        logo.setBackground(round(0xFF4DA3FF, 28));
+        logo.setImageDrawable(icon(R.drawable.ic_bolt, Theme.ONACC));
+        logo.setBackground(round(Theme.ACC, 28));
         int pad = (int) dp(22);
         logo.setPadding(pad, pad, pad, pad);
         splash.addView(logo, new LinearLayout.LayoutParams((int) dp(96), (int) dp(96)));
@@ -650,7 +748,7 @@ public class MainActivity extends Activity {
     private TextView rowItem(LinearLayout parent, String label, int ic, View.OnClickListener l) {
         TextView t = text(label, 14, TXT, false);
         t.setCompoundDrawablePadding((int) dp(14));
-        t.setCompoundDrawablesRelativeWithIntrinsicBounds(icon(ic, MUT), null, icon(R.drawable.ic_chevron, 0xFF4A5A80), null);
+        t.setCompoundDrawablesRelativeWithIntrinsicBounds(icon(ic, MUT), null, icon(R.drawable.ic_chevron, Theme.CHEV), null);
         t.setPadding(0, (int) dp(12), 0, (int) dp(12));
         t.setOnClickListener(l);
         parent.addView(t);
@@ -715,6 +813,13 @@ public class MainActivity extends Activity {
             return;
         }
         final Updater.Info info = pending;
+        dialog().setTitle("Atualizar para v" + info.name)
+                .setMessage(info.notes.isEmpty() ? "Sem notas desta versão." : info.notes)
+                .setPositiveButton(Updater.ready(this, info) ? "Instalar" : "Baixar e instalar", (d, w) -> startInstall(info))
+                .setNegativeButton("Agora não", null).show();
+    }
+
+    private void startInstall(final Updater.Info info) {
         btnUpdate.setEnabled(false);
         new Thread(() -> {
             try {
@@ -762,6 +867,202 @@ public class MainActivity extends Activity {
         reportsVer = -1;
         ptTick = 0;
         h.post(tick);
+        if (tutorial != null) renderTutorial();
+        Updater.Info dl = Updater.downloaded(this);
+        if (dl != null && pending == null && tvUpdate != null) {
+            pending = dl;
+            tvUpdate.setText("Nova versão já baixada: v" + dl.name + "\n" + dl.notes);
+            tvUpdate.setTextColor(OK);
+            btnUpdate.setText("Instalar v" + dl.name);
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent i) {
+        super.onNewIntent(i);
+        setIntent(i);
+        handleIntent(i);
+    }
+
+    private void handleIntent(Intent i) {
+        if (i == null || !i.getBooleanExtra(EXTRA_INSTALL, false)) return;
+        i.removeExtra(EXTRA_INSTALL);
+        showPage(pageNames.indexOf("Atualizações"));
+        Updater.Info dl = Updater.downloaded(this);
+        if (dl != null) {
+            pending = dl;
+            h.postDelayed(this::onUpdateClick, 400);
+        }
+    }
+
+    // Recria a tela para aplicar tema/cor, voltando para a mesma página.
+    private void restyle() {
+        resumePage = curPage;
+        recreate();
+    }
+
+    private void updateDiag() {
+        if (tvDiag == null || curPage != pageNames.indexOf("Diagnóstico")) return;
+        tvDiag.setText(Diag.summary(this) + "\n\nErros registrados: " + CrashLog.count(this));
+    }
+
+    private void export(final boolean pdf) {
+        toast("Gerando…");
+        new Thread(() -> {
+            try {
+                if (Reports.all(this).isEmpty()) {
+                    h.post(() -> toast("Ainda não há sessões para exportar."));
+                    return;
+                }
+                java.io.File f = pdf ? Export.pdf(this) : Export.csv(this);
+                h.post(() -> Export.share(this, f, pdf ? "application/pdf" : "text/csv"));
+            } catch (Throwable e) {
+                CrashLog.log(this, "Exportar", CrashLog.stack(e));
+                h.post(() -> toast("Não foi possível exportar."));
+            }
+        }).start();
+    }
+
+    private void showHistory() {
+        toast("Buscando versões…");
+        new Thread(() -> {
+            try {
+                final List<String> rel = Updater.history();
+                h.post(() -> {
+                    if (isDestroyed()) return;
+                    StringBuilder sb = new StringBuilder();
+                    for (String r : rel) sb.append(r).append("\n\n");
+                    ScrollView sv = new ScrollView(this);
+                    TextView t = text(sb.toString().trim(), 13, TXT, false);
+                    t.setPadding((int) dp(20), (int) dp(12), (int) dp(20), (int) dp(12));
+                    sv.addView(t);
+                    dialog().setTitle("Histórico de versões").setView(sv).setPositiveButton("Fechar", null).show();
+                });
+            } catch (Exception e) {
+                h.post(() -> toast("Não consegui buscar o histórico."));
+            }
+        }).start();
+    }
+
+    private void showWhatsNew() {
+        int code = Updater.installedCode(this);
+        if (prefs.getInt("wn_code", 0) != code || prefs.getInt("wn_seen", 0) == code) return;
+        prefs.edit().putInt("wn_seen", code).apply();
+        String notes = prefs.getString("wn_notes", "");
+        if (notes.isEmpty()) return;
+        dialog().setTitle("Novidades da v" + prefs.getString("wn_name", "")).setMessage(notes).setPositiveButton("Entendi", null).show();
+    }
+
+    private LinearLayout tutorial;
+    private int tutStep;
+
+    private boolean usageGranted() {
+        try {
+            android.app.AppOpsManager ao = getSystemService(android.app.AppOpsManager.class);
+            return ao.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), getPackageName())
+                    == android.app.AppOpsManager.MODE_ALLOWED;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // Tutorial de primeiro uso: cada passo mostra se a permissão já foi dada.
+    private void showTutorial() {
+        if (tutorial != null || rootView == null) return;
+        tutorial = new LinearLayout(this);
+        tutorial.setOrientation(LinearLayout.VERTICAL);
+        tutorial.setGravity(Gravity.CENTER);
+        tutorial.setBackgroundColor(BG);
+        tutorial.setClickable(true);
+        int p = (int) dp(24);
+        tutorial.setPadding(p, (int) dp(40), p, p);
+        rootView.addView(tutorial, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        tutorial.setAlpha(0f);
+        tutorial.animate().alpha(1f).setDuration(400).start();
+        tutStep = 0;
+        renderTutorial();
+    }
+
+    private void closeTutorial() {
+        prefs.edit().putBoolean("onboarded", true).apply();
+        final View t = tutorial;
+        tutorial = null;
+        t.animate().alpha(0f).setDuration(350).withEndAction(() -> rootView.removeView(t)).start();
+    }
+
+    private void renderTutorial() {
+        if (tutorial == null) return;
+        final String[] title = {"Bem-vindo ao Booster", "Monitor sobre o jogo", "Tempo de jogo certinho", "Não perturbe", "Modo avançado", "Tudo pronto"};
+        final String[] body = {
+                "Vou te guiar em poucos passos para liberar mais RAM, medir FPS e temperatura e gerar relatórios de cada jogo. Você pode pular o que quiser.",
+                "Para mostrar FPS, temperatura e a bolha por cima do jogo, permita \"Sobrepor a outros apps\".",
+                "O Booster lê o histórico de uso do Android para somar as horas de cada jogo, mesmo abrindo o jogo fora dele.",
+                "Opcional: silencia notificações enquanto você joga e devolve tudo ao sair.",
+                "Opcional: com o ADB embutido (Depuração sem fio) o Booster mede o FPS, limpa a RAM a fundo e muda a taxa da tela por jogo. Veja a página Modo avançado.",
+                "Os jogos são detectados sozinhos. Abra um jogo e o relatório aparece aqui quando você sair. O menu abre deslizando da esquerda para a direita."};
+        final String[] action = {null, "Permitir sobreposição", "Permitir acesso ao uso", "Permitir Não perturbe", "Abrir Modo avançado", null};
+        boolean[] done = {false, Settings.canDrawOverlays(this), usageGranted(), dndAllowed(), Shell.granted(), false};
+        tutorial.removeAllViews();
+        TextView step = text((tutStep + 1) + " de " + title.length, 12, MUT, true);
+        step.setGravity(Gravity.CENTER);
+        tutorial.addView(step);
+        ImageView logo = new ImageView(this);
+        logo.setImageDrawable(icon(R.drawable.ic_bolt, Theme.ONACC));
+        logo.setBackground(round(Theme.ACC, 24));
+        int pd = (int) dp(18);
+        logo.setPadding(pd, pd, pd, pd);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams((int) dp(80), (int) dp(80));
+        lp.setMargins(0, (int) dp(24), 0, (int) dp(24));
+        tutorial.addView(logo, lp);
+        TextView t = text(title[tutStep], 22, TXT, true);
+        t.setGravity(Gravity.CENTER);
+        tutorial.addView(t);
+        TextView b = text(body[tutStep], 14, MUT, false);
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(0, (int) dp(10), 0, (int) dp(16));
+        tutorial.addView(b);
+        if (action[tutStep] != null) {
+            if (done[tutStep]) {
+                TextView ok = text("✓ Já está ativo", 14, OK, true);
+                ok.setGravity(Gravity.CENTER);
+                tutorial.addView(ok);
+            } else {
+                Button ab = button(action[tutStep], Theme.ACC, Theme.ONACC);
+                ab.setTextSize(14);
+                final int st = tutStep;
+                ab.setOnClickListener(v -> {
+                    if (st == 1) askOverlay();
+                    else if (st == 2) openAction(Settings.ACTION_USAGE_ACCESS_SETTINGS);
+                    else if (st == 3) startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
+                    else {
+                        closeTutorial();
+                        showPage(pageNames.indexOf("Modo avançado"));
+                    }
+                });
+                tutorial.addView(ab, btnParams(48));
+            }
+        }
+        LinearLayout nav = new LinearLayout(this);
+        nav.setPadding(0, (int) dp(16), 0, 0);
+        Button skip = button("Pular tudo", Theme.BTN2, TXT);
+        skip.setTextSize(14);
+        skip.setOnClickListener(v -> closeTutorial());
+        Button next = button(tutStep == title.length - 1 ? "Começar" : "Continuar", Theme.ACC, Theme.ONACC);
+        next.setTextSize(14);
+        next.setOnClickListener(v -> {
+            if (tutStep == title.length - 1) closeTutorial();
+            else {
+                tutStep++;
+                renderTutorial();
+            }
+        });
+        LinearLayout.LayoutParams n1 = new LinearLayout.LayoutParams(0, (int) dp(48), 1);
+        n1.setMargins(0, 0, (int) dp(4), 0);
+        LinearLayout.LayoutParams n2 = new LinearLayout.LayoutParams(0, (int) dp(48), 1);
+        n2.setMargins((int) dp(4), 0, 0, 0);
+        if (tutStep < title.length - 1) nav.addView(skip, n1);
+        nav.addView(next, n2);
+        tutorial.addView(nav);
     }
 
     @Override
@@ -784,6 +1085,8 @@ public class MainActivity extends Activity {
             updateShizuku();
             updateAdb();
             updateChrome();
+            Diag.sample();
+            updateDiag();
         }
         if (m != null) tvPreview.setText(OverlayText.build(m, prefs));
         if (m == null) return;
@@ -1059,8 +1362,8 @@ public class MainActivity extends Activity {
         info.addView(text(sub, 12, MUT, false));
         row.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         ImageView go = new ImageView(this);
-        go.setImageDrawable(icon(R.drawable.ic_play, 0xFF04101F));
-        go.setBackground(round(0xFF4DA3FF, 12));
+        go.setImageDrawable(icon(R.drawable.ic_play, Theme.ONACC));
+        go.setBackground(round(Theme.ACC, 12));
         int p = (int) dp(10);
         go.setPadding(p, p, p, p);
         go.setOnClickListener(v -> play(g.pkg));
@@ -1070,7 +1373,7 @@ public class MainActivity extends Activity {
     }
 
     private android.app.AlertDialog.Builder dialog() {
-        return new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert);
+        return new android.app.AlertDialog.Builder(this, Theme.light ? android.R.style.Theme_Material_Light_Dialog_Alert : android.R.style.Theme_Material_Dialog_Alert);
     }
 
     private int gameTarget(String pkg) {
@@ -1113,11 +1416,27 @@ public class MainActivity extends Activity {
     private void showProfile(final Games.Game g) {
         String[] items = {"Nível da limpeza: " + levelLabel(Profiles.rawLevel(this, g.pkg)),
                 "Limpar RAM ao abrir: " + onOff(Profiles.rawClean(this, g.pkg)),
-                "Não perturbe: " + onOff(Profiles.rawDnd(this, g.pkg))};
+                "Não perturbe: " + onOff(Profiles.rawDnd(this, g.pkg)),
+                "Brilho no jogo: " + (Profiles.rawBright(this, g.pkg) < 0 ? "não mexer" : Profiles.rawBright(this, g.pkg) + "%"),
+                "Taxa da tela no jogo: " + (Profiles.rawHz(this, g.pkg) < 0 ? "não mexer" : Profiles.rawHz(this, g.pkg) + " Hz")};
         dialog().setTitle("Perfil: " + g.label).setItems(items, (d, which) -> {
             if (which == 0) Profiles.setLevel(this, g.pkg, Profiles.next(Profiles.rawLevel(this, g.pkg), 2));
             else if (which == 1) Profiles.setClean(this, g.pkg, Profiles.next(Profiles.rawClean(this, g.pkg), 1));
-            else Profiles.setDnd(this, g.pkg, Profiles.next(Profiles.rawDnd(this, g.pkg), 1));
+            else if (which == 3) {
+                int[] opts = {-1, 25, 50, 75, 100};
+                int cur = Profiles.rawBright(this, g.pkg), nx = opts[0];
+                for (int i = 0; i < opts.length; i++) if (opts[i] == cur) nx = opts[(i + 1) % opts.length];
+                Profiles.setBright(this, g.pkg, nx);
+            } else if (which == 4) {
+                int[] rates = Monitor.supportedRates(this);
+                int cur = Profiles.rawHz(this, g.pkg), nx = rates[0];
+                if (cur > 0) {
+                    nx = -1;
+                    for (int i = 0; i < rates.length; i++) if (rates[i] == cur && i + 1 < rates.length) nx = rates[i + 1];
+                }
+                Profiles.setHz(this, g.pkg, nx);
+                if (nx > 0 && !Shell.granted()) toast("A taxa da tela precisa do modo avançado conectado.");
+            } else if (which == 2) Profiles.setDnd(this, g.pkg, Profiles.next(Profiles.rawDnd(this, g.pkg), 1));
             showProfile(g);
         }).setNegativeButton("Fechar", null).show();
     }
@@ -1140,7 +1459,7 @@ public class MainActivity extends Activity {
     }
 
     private int gradeColor(int score) {
-        return score < 0 ? MUT : score >= 80 ? OK : score >= 65 ? 0xFF4DA3FF : score >= 50 ? WARN : BAD;
+        return score < 0 ? MUT : score >= 80 ? OK : score >= 65 ? Theme.ACC : score >= 50 ? WARN : BAD;
     }
 
     private void refreshReports(List<Reports.Agg> ags) {
@@ -1166,7 +1485,7 @@ public class MainActivity extends Activity {
             row.setGravity(Gravity.CENTER_VERTICAL);
             TextView gr = text(Reports.grade(a.avgScore), 22, gradeColor(a.avgScore), true);
             gr.setGravity(Gravity.CENTER);
-            GradientDrawable gb = round(0xFF0F1830, 12);
+            GradientDrawable gb = round(Theme.BG2, 12);
             gb.setStroke((int) dp(2), gradeColor(a.avgScore));
             gr.setBackground(gb);
             row.addView(gr, new LinearLayout.LayoutParams((int) dp(48), (int) dp(48)));
@@ -1222,10 +1541,11 @@ public class MainActivity extends Activity {
                 .append("RAM máx ").append(r.ramMaxMb).append(" MB (média ").append(r.ramAvgPct).append("%)\n")
                 .append("Bateria ").append(r.battStart).append("% → ").append(r.battEnd).append("% · limitação térmica ")
                 .append(Reports.duration(r.throttleSec));
+        if (r.pingAvg > 0) st.append("\nRede: ping médio ").append(r.pingAvg).append(" ms (máx ").append(r.pingMax).append(") · perda ").append(r.lossPct).append('%');
         l.addView(text(st.toString(), 13, TXT, false));
 
         if (r.measured) {
-            GraphView g1 = new GraphView(this, "FPS durante a sessão", 0xFF4DA3FF, 0, Math.max(r.target, r.fpsMax));
+            GraphView g1 = new GraphView(this, "FPS durante a sessão", Theme.ACC, 0, Math.max(r.target, r.fpsMax));
             g1.set(toFloats(r.fpsSeries, 1));
             l.addView(g1, graphParams());
         }
@@ -1235,7 +1555,7 @@ public class MainActivity extends Activity {
 
         String cmp = Reports.compare(rs);
         if (cmp != null) {
-            TextView ct = text(cmp, 12, 0xFF4DA3FF, false);
+            TextView ct = text(cmp, 12, Theme.ACC, false);
             ct.setPadding(0, (int) dp(8), 0, 0);
             l.addView(ct);
         }
@@ -1267,7 +1587,7 @@ public class MainActivity extends Activity {
 
         final android.app.AlertDialog d = dialog().setView(sv).setPositiveButton("Fechar", null).create();
         d.getWindow().setBackgroundDrawable(round(BG, 18));
-        Button share = button("Compartilhar relatório", 0xFF1D2A4A, TXT);
+        Button share = button("Compartilhar relatório", Theme.BTN2, TXT);
         withIcon(share, R.drawable.ic_share, TXT);
         share.setTextSize(14);
         share.setOnClickListener(v -> {
@@ -1275,7 +1595,7 @@ public class MainActivity extends Activity {
             startActivity(Intent.createChooser(i, "Compartilhar relatório"));
         });
         l.addView(share, btnParams(44));
-        Button img = button("Compartilhar como imagem", 0xFF1D2A4A, TXT);
+        Button img = button("Compartilhar como imagem", Theme.BTN2, TXT);
         withIcon(img, R.drawable.ic_share, TXT);
         img.setTextSize(14);
         img.setOnClickListener(v -> {
@@ -1286,7 +1606,14 @@ public class MainActivity extends Activity {
             }
         });
         l.addView(img, btnParams(44));
-        Button del = button("Apagar histórico deste jogo", 0xFF3A1D24, BAD);
+        if (rs.size() >= 2) {
+            Button cmpB = button("Comparar sessões", Theme.BTN2, TXT);
+            withIcon(cmpB, R.drawable.ic_chart, TXT);
+            cmpB.setTextSize(14);
+            cmpB.setOnClickListener(v -> CompareDialog.pick(this, label, rs));
+            l.addView(cmpB, btnParams(44));
+        }
+        Button del = button("Apagar histórico deste jogo", Theme.blend(BAD, CARD, 0.16f), BAD);
         withIcon(del, R.drawable.ic_delete, BAD);
         del.setTextSize(14);
         del.setOnClickListener(v -> dialog().setMessage("Apagar todas as sessões de " + label + "?")
@@ -1488,9 +1815,9 @@ public class MainActivity extends Activity {
             long[] s = e.getValue();
             info.addView(text("Hoje " + PlayTime.fmt(s[0]) + "  ·  7 dias " + PlayTime.fmt(s[1]) + "  ·  30 dias " + PlayTime.fmt(s[2]), 12, MUT, false));
             LinearLayout track = new LinearLayout(this);
-            track.setBackground(round(0xFF1B2745, 3));
+            track.setBackground(round(Theme.TRACK, 3));
             View fillBar = new View(this);
-            fillBar.setBackground(round(0xFF4DA3FF, 3));
+            fillBar.setBackground(round(Theme.ACC, 3));
             track.addView(fillBar, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, Math.max(0.02f, s[2] / (float) top30)));
             track.addView(new View(this), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, Math.max(0f, 1f - s[2] / (float) top30)));
             LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) dp(6));
@@ -1550,7 +1877,7 @@ public class MainActivity extends Activity {
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable cg = round(CARD, 14);
-        cg.setStroke((int) dp(1), 0xFF1F2B48);
+        cg.setStroke((int) dp(1), Theme.LINE);
         c.setBackground(cg);
         int p = (int) dp(14);
         c.setPadding(p, p, p, p);
