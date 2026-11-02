@@ -14,6 +14,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.ViewConfiguration;
+import android.animation.ValueAnimator;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -420,8 +423,30 @@ public class MainActivity extends Activity {
         root.addView(drawer, dlp);
         drawer.setTranslationX(-dp(270));
 
+        exitPill = new LinearLayout(this);
+        exitPill.setGravity(Gravity.CENTER_VERTICAL);
+        exitPill.setPadding((int) dp(18), 0, (int) dp(18), 0);
+        GradientDrawable pb = new GradientDrawable();
+        pb.setColor(CARD);
+        pb.setStroke((int) dp(1), 0xFFFF6B6B);
+        float pr = dp(28);
+        pb.setCornerRadii(new float[]{pr, pr, 0, 0, 0, 0, pr, pr});
+        exitPill.setBackground(pb);
+        ImageView pi = new ImageView(this);
+        pi.setImageDrawable(icon(R.drawable.ic_stop, 0xFFFF6B6B));
+        exitPill.addView(pi, new LinearLayout.LayoutParams((int) dp(22), (int) dp(22)));
+        TextView pillText = text("Fechar o Booster", 14, TXT, true);
+        pillText.setPadding((int) dp(10), 0, 0, 0);
+        exitPill.addView(pillText);
+        exitPill.setVisibility(View.GONE);
+        exitPill.setOnClickListener(v -> finishAndRemoveTask());
+        FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams((int) dp(200), (int) dp(56), Gravity.END | Gravity.CENTER_VERTICAL);
+        root.addView(exitPill, plp);
+        exitPill.setTranslationX(dp(200));
+
         setContentView(root);
         showPage(0);
+        if (b == null) playIntro(root, main);
         if (prefs.getBoolean("auto", true) && !OverlayService.running) startForegroundService(new Intent(this, OverlayService.class));
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
         if (System.currentTimeMillis() - prefs.getLong("lastCheck", 0) > 6 * 3600_000L) checkUpdate(false);
@@ -454,16 +479,166 @@ public class MainActivity extends Activity {
         tvTitle.setText(pageNames.get(idx));
     }
 
-    private void toggleDrawer(boolean open) {
+    private LinearLayout exitPill;
+    private ValueAnimator drawerAnim;
+    private float dragX0, dragY0, dragLast, dragStartP, dragP, dragDir;
+    private int dragKind;
+    private boolean pillShown;
+    private final Runnable hidePill = () -> animatePill(false);
+
+    private float drawerProgress() {
+        return Math.max(0f, Math.min(1f, 1f + drawer.getTranslationX() / dp(270)));
+    }
+
+    private void setProgress(float p) {
+        drawer.setTranslationX(-dp(270) * (1f - p));
+        scrim.setVisibility(p > 0f ? View.VISIBLE : View.GONE);
+        scrim.setAlpha(p);
+    }
+
+    private void animateDrawer(final boolean open) {
         drawerOpen = open;
-        if (open) {
-            scrim.setAlpha(0);
-            scrim.setVisibility(View.VISIBLE);
+        if (drawerAnim != null) drawerAnim.cancel();
+        float from = drawerProgress(), to = open ? 1f : 0f;
+        drawerAnim = ValueAnimator.ofFloat(from, to);
+        drawerAnim.setDuration((long) (120 + 380 * Math.abs(to - from)));
+        drawerAnim.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f));
+        drawerAnim.addUpdateListener(a -> setProgress((float) a.getAnimatedValue()));
+        drawerAnim.start();
+    }
+
+    private void animatePill(boolean show) {
+        pillShown = show;
+        h.removeCallbacks(hidePill);
+        exitPill.animate().cancel();
+        if (show) {
+            exitPill.setVisibility(View.VISIBLE);
+            exitPill.animate().translationX(0).alpha(1).setDuration(450)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.8f)).start();
+            h.postDelayed(hidePill, 4000);
+        } else {
+            exitPill.animate().translationX(dp(200)).alpha(0).setDuration(350)
+                    .setInterpolator(new android.view.animation.AccelerateInterpolator()).withEndAction(() -> {
+                        if (!pillShown) exitPill.setVisibility(View.GONE);
+                    }).start();
         }
-        scrim.animate().alpha(open ? 1 : 0).setDuration(180).withEndAction(() -> {
-            if (!drawerOpen) scrim.setVisibility(View.GONE);
-        });
-        drawer.animate().translationX(open ? 0 : -dp(270)).setDuration(180);
+    }
+
+    // Arrastar para a direita abre o menu; para a esquerda fecha o menu ou mostra "Fechar o Booster".
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent e) {
+        int slop = ViewConfiguration.get(this).getScaledTouchSlop();
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                dragX0 = dragLast = e.getRawX();
+                dragY0 = e.getRawY();
+                dragKind = 0;
+                dragDir = 0;
+                h.removeCallbacks(hidePill);
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if (dragKind == 0) {
+                    float dx = e.getRawX() - dragX0, dy = e.getRawY() - dragY0;
+                    if (Math.abs(dx) > slop * 2 && Math.abs(dx) > Math.abs(dy) * 1.6f) {
+                        if (dx > 0 || drawerOpen || drawerProgress() > 0f) dragKind = 1;
+                        else if (!pillShown) dragKind = 2;
+                        if (dragKind != 0) {
+                            if (drawerAnim != null) drawerAnim.cancel();
+                            dragStartP = drawerProgress();
+                            dragX0 = e.getRawX();
+                            MotionEvent c = MotionEvent.obtain(e);
+                            c.setAction(MotionEvent.ACTION_CANCEL);
+                            super.dispatchTouchEvent(c);
+                            c.recycle();
+                            exitPill.setVisibility(dragKind == 2 ? View.VISIBLE : exitPill.getVisibility());
+                        }
+                    }
+                }
+                if (dragKind == 1) {
+                    dragP = Math.max(0f, Math.min(1f, dragStartP + (e.getRawX() - dragX0) / dp(270)));
+                    setProgress(dragP);
+                    float step = e.getRawX() - dragLast;
+                    if (Math.abs(step) > 1f) dragDir = step;
+                    dragLast = e.getRawX();
+                    return true;
+                } else if (dragKind == 2) {
+                    float q = Math.max(0f, Math.min(1f, (dragX0 - e.getRawX()) / dp(160)));
+                    exitPill.setAlpha(q);
+                    exitPill.setTranslationX(dp(200) * (1f - q));
+                    dragP = q;
+                    return true;
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (dragKind == 1) {
+                    boolean open = dragDir > 0 ? dragP > 0.2f : dragDir < 0 ? dragP > 0.8f : dragP > 0.5f;
+                    animateDrawer(open);
+                    dragKind = 0;
+                    return true;
+                } else if (dragKind == 2) {
+                    animatePill(dragP > 0.45f);
+                    dragKind = 0;
+                    return true;
+                }
+                if (pillShown) h.postDelayed(hidePill, 4000);
+                break;
+            default:
+                break;
+        }
+        return super.dispatchTouchEvent(e);
+    }
+
+    // Abertura: logo com pulso sobre o fundo escuro, depois o conteúdo entra em cascata.
+    private void playIntro(final FrameLayout root, final View main) {
+        final LinearLayout splash = new LinearLayout(this);
+        splash.setOrientation(LinearLayout.VERTICAL);
+        splash.setGravity(Gravity.CENTER);
+        splash.setBackgroundColor(BG);
+        splash.setClickable(true);
+        final ImageView logo = new ImageView(this);
+        logo.setImageDrawable(icon(R.drawable.ic_bolt, 0xFF04101F));
+        logo.setBackground(round(0xFF4DA3FF, 28));
+        int pad = (int) dp(22);
+        logo.setPadding(pad, pad, pad, pad);
+        splash.addView(logo, new LinearLayout.LayoutParams((int) dp(96), (int) dp(96)));
+        final TextView name = text("Booster", 26, TXT, true);
+        name.setGravity(Gravity.CENTER);
+        name.setPadding(0, (int) dp(18), 0, 0);
+        splash.addView(name);
+        root.addView(splash, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        logo.setScaleX(0.5f);
+        logo.setScaleY(0.5f);
+        logo.setAlpha(0f);
+        name.setAlpha(0f);
+        name.setTranslationY(dp(14));
+        main.setAlpha(0f);
+        main.setScaleX(0.96f);
+        main.setScaleY(0.96f);
+        final View home = ((ViewGroup) pages.get(0)).getChildAt(0);
+        final ViewGroup hg = (ViewGroup) home;
+        for (int i = 0; i < hg.getChildCount(); i++) {
+            hg.getChildAt(i).setAlpha(0f);
+            hg.getChildAt(i).setTranslationY(dp(28));
+        }
+        logo.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(600)
+                .setInterpolator(new android.view.animation.OvershootInterpolator(1.4f)).start();
+        name.animate().alpha(1f).translationY(0).setStartDelay(250).setDuration(450).start();
+        h.postDelayed(() -> {
+            splash.animate().alpha(0f).setDuration(450).withEndAction(() -> root.removeView(splash)).start();
+            logo.animate().scaleX(1.15f).scaleY(1.15f).setDuration(450).start();
+            main.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(550)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.5f)).start();
+            for (int i = 0; i < hg.getChildCount(); i++) {
+                hg.getChildAt(i).animate().alpha(1f).translationY(0).setStartDelay(150 + 60L * i).setDuration(500)
+                        .setInterpolator(new android.view.animation.DecelerateInterpolator(1.8f)).start();
+            }
+        }, 1000);
+    }
+
+    private void toggleDrawer(boolean open) {
+        animateDrawer(open);
     }
 
     @Override
@@ -600,15 +775,16 @@ public class MainActivity extends Activity {
         Monitor.Sample m = Monitor.latest;
         if (reportsVer != Reports.version || reportsVer < 0) {
             reportsVer = Reports.version;
-            refreshGames();
-            refreshReports();
+            refreshLists();
         }
         tvLast.setText(prefs.getString("last", "Nenhuma sessão ainda."));
         if (ptTick++ % 60 == 0) loadPlayTime();
-        updateUsage();
-        updateShizuku();
-        updateAdb();
-        updateChrome();
+        if (ptTick % 3 == 1) {
+            updateUsage();
+            updateShizuku();
+            updateAdb();
+            updateChrome();
+        }
         if (m != null) tvPreview.setText(OverlayText.build(m, prefs));
         if (m == null) return;
         SystemInfo s = m.sys;
@@ -832,11 +1008,31 @@ public class MainActivity extends Activity {
         btnPlay.setText(g == null ? "Escolher jogo" : "Jogar " + Games.label(this, g));
     }
 
-    private void refreshGames() {
+    private final java.util.concurrent.atomic.AtomicBoolean loadingLists = new java.util.concurrent.atomic.AtomicBoolean();
+
+    // Varrer apps e ler relatórios é pesado: roda fora da thread principal para não gerar "não está respondendo".
+    private void refreshLists() {
+        if (!loadingLists.compareAndSet(false, true)) return;
+        new Thread(() -> {
+            try {
+                final List<Games.Game> gl = Games.list(this);
+                final List<Reports.Agg> ags = Reports.byGame(this);
+                h.post(() -> {
+                    if (isDestroyed()) return;
+                    refreshGames(gl, ags);
+                    refreshReports(ags);
+                });
+            } catch (Throwable ignored) {
+            } finally {
+                loadingLists.set(false);
+            }
+        }).start();
+    }
+
+    private void refreshGames(List<Games.Game> gl, List<Reports.Agg> ags) {
         gamesList.removeAllViews();
-        List<Games.Game> gl = Games.list(this);
         java.util.Map<String, Reports.Agg> agg = new java.util.HashMap<>();
-        for (Reports.Agg a : Reports.byGame(this)) agg.put(a.pkg, a);
+        for (Reports.Agg a : ags) agg.put(a.pkg, a);
         if (gl.isEmpty()) {
             gamesList.addView(text("Nenhum jogo encontrado. Toque em Adicionar jogo.", 13, MUT, false));
         }
@@ -900,7 +1096,7 @@ public class MainActivity extends Activity {
                 showReportDialog(g.pkg, g.label);
             } else {
                 Games.remove(this, g.pkg);
-                refreshGames();
+                refreshLists();
             }
         }).setNegativeButton("Fechar", null).show();
     }
@@ -927,24 +1123,28 @@ public class MainActivity extends Activity {
     }
 
     private void pickGames() {
-        final List<Games.Game> cands = Games.candidates(this);
-        String[] names = new String[cands.size()];
-        for (int i = 0; i < names.length; i++) names[i] = cands.get(i).label;
-        final boolean[] on = new boolean[names.length];
-        dialog().setTitle("Adicionar jogos").setMultiChoiceItems(names, on, (d, i, c) -> on[i] = c)
-                .setPositiveButton("Adicionar", (d, w) -> {
-                    for (int i = 0; i < on.length; i++) if (on[i]) Games.add(this, cands.get(i).pkg);
-                    refreshGames();
-                }).setNegativeButton("Cancelar", null).show();
+        new Thread(() -> {
+            final List<Games.Game> cands = Games.candidates(this);
+            h.post(() -> {
+                if (isDestroyed()) return;
+                String[] names = new String[cands.size()];
+                for (int i = 0; i < names.length; i++) names[i] = cands.get(i).label;
+                final boolean[] on = new boolean[names.length];
+                dialog().setTitle("Adicionar jogos").setMultiChoiceItems(names, on, (d, i, c) -> on[i] = c)
+                        .setPositiveButton("Adicionar", (d, w) -> {
+                            for (int i = 0; i < on.length; i++) if (on[i]) Games.add(this, cands.get(i).pkg);
+                            refreshLists();
+                        }).setNegativeButton("Cancelar", null).show();
+            });
+        }).start();
     }
 
     private int gradeColor(int score) {
         return score < 0 ? MUT : score >= 80 ? OK : score >= 65 ? 0xFF4DA3FF : score >= 50 ? WARN : BAD;
     }
 
-    private void refreshReports() {
+    private void refreshReports(List<Reports.Agg> ags) {
         reportsList.removeAllViews();
-        List<Reports.Agg> ags = Reports.byGame(this);
         if (ags.isEmpty()) {
             reportsList.addView(text("Nenhuma sessão registrada ainda. Jogue com o Booster ativo (detecção automática ou botão Jogar) e o relatório aparece aqui ao sair do jogo.", 13, MUT, false));
             return;
