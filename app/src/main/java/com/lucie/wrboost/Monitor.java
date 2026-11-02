@@ -125,6 +125,8 @@ public final class Monitor {
         Adb.maybeReconnect(app);
         s.hz = refreshRate(app);
         autoDetect();
+        autoClean(s);
+        if (tick % 300 == 7 && Games.hasUsageAccess(app)) new Thread(() -> PlayTime.update(app)).start();
 
         Parsers.Temps tm = readZones();
         if ((Float.isNaN(tm.cpu) || Float.isNaN(tm.gpu)) && Shell.granted()) {
@@ -202,12 +204,32 @@ public final class Monitor {
         }
     }
 
+    private static long lastClean;
+    private static volatile boolean cleaning;
+
+    // Limpeza automática quando a RAM passa do limite escolhido, só com um jogo em primeiro plano.
+    private static void autoClean(Sample s) {
+        int pct = prefs().getInt("auto_clean_pct", 0);
+        String g = fgGame;
+        long now = System.currentTimeMillis();
+        if (pct <= 0 || g == null || cleaning || s.sys.ramUsedPct() < pct || now - lastClean < 180_000) return;
+        lastClean = now;
+        cleaning = true;
+        new Thread(() -> {
+            try {
+                Booster.boost(app, Booster.level(app), g);
+            } finally {
+                cleaning = false;
+            }
+        }).start();
+    }
+
     private static void beginAuto(String pkg) {
         startSession(pkg);
         final android.content.SharedPreferences p = prefs();
         if (p.getBoolean("auto_boost", true)) {
             new Thread(() -> {
-                Booster.boost(app, p.getBoolean("aggr", true) && Shell.granted(), pkg);
+                Booster.boost(app, Booster.level(app), pkg);
                 Booster.gameModePerformance(pkg);
                 if (p.getBoolean("dnd", true)) Booster.enableDnd(app);
             }).start();

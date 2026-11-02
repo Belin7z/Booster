@@ -21,10 +21,16 @@ public final class Booster {
             "com.miui.", "com.xiaomi.", "android", "com.mediatek", "com.lucie.wrboost"
     };
 
-    // Apps de mensagem ficam de fora do modo agressivo para não perder notificações.
+    // Apps de mensagem ficam de fora da limpeza equilibrada para não perder notificações.
     private static final Set<String> KEEP_ALWAYS = new HashSet<>(Arrays.asList(
             Shell.SHIZUKU_PKG, "com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger", "com.discord",
             "com.google.android.dialer", "com.google.android.apps.messaging"));
+
+    // Na limpeza máxima só o essencial sobrevive (além dos apps escolhidos pelo usuário).
+    private static final Set<String> KEEP_ESSENTIAL = new HashSet<>(Arrays.asList(
+            Shell.SHIZUKU_PKG, "com.google.android.dialer", "com.google.android.apps.messaging"));
+
+    public static final String[] LEVEL_NAMES = {"Leve", "Equilibrada", "Máxima"};
 
     public static final class Result {
         public int targeted;
@@ -32,7 +38,17 @@ public final class Booster {
         public long freedBytes;
     }
 
-    public static Result boost(Context c, boolean aggressive, String game) {
+    // Nível escolhido pelo usuário; os níveis 1 e 2 exigem o modo avançado.
+    public static int level(Context c) {
+        int l = c.getSharedPreferences("wr", Context.MODE_PRIVATE).getInt("clean_level", 1);
+        return Shell.granted() ? Math.max(0, Math.min(2, l)) : 0;
+    }
+
+    public static Set<String> userKeep(Context c) {
+        return new HashSet<>(c.getSharedPreferences("wr", Context.MODE_PRIVATE).getStringSet("keep_apps", new HashSet<>()));
+    }
+
+    public static Result boost(Context c, int level, String game) {
         PackageManager pm = c.getPackageManager();
         ActivityManager am = (ActivityManager) c.getSystemService(Context.ACTIVITY_SERVICE);
         Set<String> keep = protectedPackages(c, game);
@@ -51,10 +67,16 @@ public final class Booster {
             r.targeted++;
         }
 
-        if (aggressive && Shell.granted()) r.forced = forceStopThirdParty(keep);
+        if (level >= 1 && Shell.granted()) {
+            r.forced = forceStopThirdParty(keep, level >= 2);
+            if (level >= 2) {
+                Shell.exec("am kill-all", 5000);
+                Shell.exec("pm trim-caches 8G", 10000);
+            }
+        }
 
         try {
-            Thread.sleep(1500);
+            Thread.sleep(level >= 2 ? 2500 : 1500);
         } catch (InterruptedException ignored) {
         }
         ActivityManager.MemoryInfo after = new ActivityManager.MemoryInfo();
@@ -63,20 +85,21 @@ public final class Booster {
         return r;
     }
 
-    private static int forceStopThirdParty(Set<String> keep) {
+    private static int forceStopThirdParty(Set<String> keep, boolean max) {
         String list = Shell.exec("pm list packages -3", 4000);
         if (list == null) return 0;
+        Set<String> spare = max ? KEEP_ESSENTIAL : KEEP_ALWAYS;
         StringBuilder cmd = new StringBuilder();
         int n = 0;
         for (String line : list.split("\n")) {
             line = line.trim();
             if (!line.startsWith("package:")) continue;
             String p = line.substring(8);
-            if (!Parsers.safePackage(p) || keep.contains(p) || KEEP_ALWAYS.contains(p) || startsWithAny(p)) continue;
+            if (!Parsers.safePackage(p) || keep.contains(p) || spare.contains(p) || startsWithAny(p)) continue;
             cmd.append("am force-stop ").append(p).append('\n');
             n++;
         }
-        if (n > 0) Shell.exec(cmd.toString(), 15000);
+        if (n > 0) Shell.exec(cmd.toString(), 20000);
         return n;
     }
 
@@ -86,7 +109,7 @@ public final class Booster {
     }
 
     private static Set<String> protectedPackages(Context c, String game) {
-        Set<String> keep = new HashSet<>();
+        Set<String> keep = userKeep(c);
         if (game != null) keep.add(game);
         PackageManager pm = c.getPackageManager();
 

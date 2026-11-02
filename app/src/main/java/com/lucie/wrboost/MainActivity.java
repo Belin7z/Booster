@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
@@ -46,10 +47,14 @@ public class MainActivity extends Activity {
     private GraphView gFps, gCpu;
     private TextView tvFps, tvLow, tvCpu, tvGpu, tvBat, tvFree;
     private TextView tvSwap, tvThermal, tvTip, tvResult, tvShizuku, tvLast;
-    private Switch swOverlay, swDnd, swAggr;
+    private Switch swOverlay, swDnd;
     private TextView tvAdb, tvFpsTarget, tvFpsTarget2, tvPreview, tvRates;
     private Button btnAdb, btnForget;
-    private LinearLayout gamesList, reportsList;
+    private LinearLayout gamesList, reportsList, ptDays, ptGames;
+    private BarChartView ptBars;
+    private TextView tvPtToday, tvPtWeek, tvPtMonth, ptSummary, tvHomeToday, tvLevel, tvKeep, tvAutoClean;
+    private LinearLayout ptPerm;
+    private int ptTick;
     private TextView tvUsage;
     private int reportsVer = -1;
     private Button btnPlay, btnBoost, btnShizuku, btnUpdate;
@@ -111,6 +116,11 @@ public class MainActivity extends Activity {
         tvGpu = stat(r1, "GPU");
         tvBat = stat(r1, "Bateria");
         home.addView(r1);
+        tvHomeToday = text("", 12, MUT, false);
+        tvHomeToday.setGravity(Gravity.CENTER);
+        tvHomeToday.setPadding(0, (int) dp(6), 0, 0);
+        tvHomeToday.setOnClickListener(v -> showPage(pageNames.indexOf("Tempo de jogo")));
+        home.addView(tvHomeToday);
         tvFpsTarget = text("", 12, MUT, false);
         tvFpsTarget.setGravity(Gravity.CENTER);
         home.addView(tvFpsTarget);
@@ -164,6 +174,39 @@ public class MainActivity extends Activity {
         reportsList = new LinearLayout(this);
         reportsList.setOrientation(LinearLayout.VERTICAL);
         rp.addView(reportsList);
+
+        // Tempo de jogo
+        LinearLayout pt = page("Tempo de jogo", R.drawable.ic_calendar);
+        ptPerm = card();
+        ptPerm.addView(text("O tempo de jogo vem do histórico de uso do Android, então conta mesmo quando você abre o jogo fora do Booster. Para isso, permita o acesso ao uso de apps.", 13, MUT, false));
+        Button grant = button("Permitir acesso ao uso", 0xFF4DA3FF, 0xFF04101F);
+        grant.setTextSize(14);
+        grant.setOnClickListener(v -> openAction(Settings.ACTION_USAGE_ACCESS_SETTINGS));
+        ptPerm.addView(grant, btnParams(44));
+        pt.addView(ptPerm);
+        LinearLayout ptRow = new LinearLayout(this);
+        ptRow.setPadding(0, (int) dp(8), 0, 0);
+        tvPtToday = stat(ptRow, "Hoje");
+        tvPtWeek = stat(ptRow, "7 dias");
+        tvPtMonth = stat(ptRow, "30 dias");
+        tvPtToday.setTextSize(16);
+        tvPtWeek.setTextSize(16);
+        tvPtMonth.setTextSize(16);
+        pt.addView(ptRow);
+        ptBars = new BarChartView(this, "Horas jogadas por dia (14 dias)");
+        pt.addView(ptBars, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) dp(170)));
+        ((LinearLayout.LayoutParams) ptBars.getLayoutParams()).setMargins(0, (int) dp(10), 0, 0);
+        LinearLayout sm = card();
+        ptSummary = text("", 13, TXT, false);
+        sm.addView(ptSummary);
+        pt.addView(sm);
+        pt.addView(section("POR DIA"));
+        ptDays = card();
+        pt.addView(ptDays);
+        pt.addView(section("POR JOGO"));
+        ptGames = new LinearLayout(this);
+        ptGames.setOrientation(LinearLayout.VERTICAL);
+        pt.addView(ptGames);
 
         // Desempenho
         LinearLayout perf = page("Desempenho", R.drawable.ic_speed);
@@ -241,7 +284,7 @@ public class MainActivity extends Activity {
 
         // Configurações
         LinearLayout set = page("Configurações", R.drawable.ic_settings);
-        set.addView(text("DURANTE O JOGO", 11, MUT, true));
+        set.addView(section("DURANTE O JOGO"));
         LinearLayout opts = card();
         swOverlay = sw(opts, "Monitor flutuante", "overlay", true);
         swOverlay.setOnCheckedChangeListener((v, on) -> {
@@ -256,11 +299,9 @@ public class MainActivity extends Activity {
                 startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
             }
         });
-        swAggr = sw(opts, "Limpeza profunda (requer modo avançado)", "aggr", true);
-        swAggr.setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("aggr", on).apply());
         tvPos = rowItem(opts, "", R.drawable.ic_overlay, v -> cyclePosition());
         set.addView(opts);
-        set.addView(text("ITENS DO MONITOR", 11, MUT, true));
+        set.addView(section("ITENS DO MONITOR"));
         LinearLayout items = card();
         String[][] its = {{"FPS", "ov_fps", "1"}, {"FPS 1% low", "ov_low", "0"}, {"Temperatura da CPU", "ov_cpu", "1"},
                 {"Temperatura da GPU", "ov_gpu", "1"}, {"Memória RAM", "ov_ram", "1"}, {"Bateria", "ov_bat", "0"},
@@ -277,7 +318,14 @@ public class MainActivity extends Activity {
         tvPreview = text("", 13, TXT, false);
         pv.addView(tvPreview);
         set.addView(pv);
-        set.addView(text("DETECÇÃO DE JOGOS", 11, MUT, true));
+        set.addView(section("LIMPEZA DE RAM"));
+        LinearLayout cl = card();
+        tvLevel = rowItem(cl, "", R.drawable.ic_memory, v -> pickLevel());
+        tvKeep = rowItem(cl, "", R.drawable.ic_shield, v -> pickKeep());
+        tvAutoClean = rowItem(cl, "", R.drawable.ic_timer, v -> cycleAutoClean());
+        set.addView(cl);
+        set.addView(text("Os níveis Equilibrada e Máxima fecham apps de verdade e precisam do modo avançado conectado. Na Máxima, só o telefone, as mensagens SMS e os apps que você marcar sobrevivem; o resto precisa ser aberto de novo. A limpeza automática roda durante o jogo quando a RAM passa do limite, no máximo a cada 3 minutos.", 12, MUT, false));
+        set.addView(section("DETECÇÃO DE JOGOS"));
         LinearLayout det = card();
         sw(det, "Detectar jogos automaticamente", "auto", true).setOnCheckedChangeListener((v, on) -> {
             prefs.edit().putBoolean("auto", on).apply();
@@ -290,7 +338,7 @@ public class MainActivity extends Activity {
         tvUsage = rowItem(det, "", R.drawable.ic_check, v -> openAction(Settings.ACTION_USAGE_ACCESS_SETTINGS));
         set.addView(det);
         set.addView(text("Com o acesso ao uso de apps (ou o modo avançado conectado) o Booster sabe qual jogo está aberto, mede o FPS dele e grava o relatório sozinho.", 12, MUT, false));
-        set.addView(text("PERMISSÕES", 11, MUT, true));
+        set.addView(section("PERMISSÕES"));
         LinearLayout perms = card();
         tvOverlayPerm = rowItem(perms, "", R.drawable.ic_check, v -> askOverlay());
         rowItem(perms, "Pop-up em segundo plano (Xiaomi)", R.drawable.ic_overlay, v -> openMiuiPerms());
@@ -522,6 +570,7 @@ public class MainActivity extends Activity {
         super.onResume();
         Monitor.acquire(this);
         reportsVer = -1;
+        ptTick = 0;
         h.post(tick);
     }
 
@@ -540,6 +589,7 @@ public class MainActivity extends Activity {
             refreshReports();
         }
         tvLast.setText(prefs.getString("last", "Nenhuma sessão ainda."));
+        if (ptTick++ % 60 == 0) loadPlayTime();
         updateUsage();
         updateShizuku();
         updateAdb();
@@ -586,6 +636,12 @@ public class MainActivity extends Activity {
     }
 
     private void updateChrome() {
+        tvLevel.setText("Nível da limpeza: " + Booster.LEVEL_NAMES[Math.max(0, Math.min(2, prefs.getInt("clean_level", 1)))]
+                + (Shell.granted() ? "" : " (precisa do modo avançado)"));
+        int kept = Booster.userKeep(this).size();
+        tvKeep.setText("Apps protegidos: " + (kept == 0 ? "nenhum escolhido" : kept + " escolhidos"));
+        int ap = prefs.getInt("auto_clean_pct", 0);
+        tvAutoClean.setText("Limpar sozinho no jogo: " + (ap == 0 ? "desligado" : "RAM acima de " + ap + "%"));
         int ft = prefs.getInt("fps_target", 0);
         tvFpsTarget2.setText("Taxa alvo do FPS: " + (ft == 0 ? "automática (" + Monitor.refreshRate(this) + " Hz)" : ft + " Hz"));
         StringBuilder rs = new StringBuilder("Taxas da tela: ");
@@ -681,16 +737,12 @@ public class MainActivity extends Activity {
         }
     }
 
-    private boolean aggressive() {
-        return swAggr.isChecked() && Shell.granted();
-    }
-
     private void boostOnly() {
         btnBoost.setEnabled(false);
         tvResult.setText("Liberando…");
-        final boolean aggr = aggressive();
+        final int lvl = Booster.level(this);
         new Thread(() -> {
-            Booster.Result r = Booster.boost(this, aggr, null);
+            Booster.Result r = Booster.boost(this, lvl, null);
             h.post(() -> {
                 btnBoost.setEnabled(true);
                 showResult(r);
@@ -717,9 +769,9 @@ public class MainActivity extends Activity {
         prefs.edit().putString("last_game", pkg).apply();
         btnPlay.setEnabled(false);
         tvResult.setText("Otimizando…");
-        final boolean aggr = aggressive();
+        final int lvl = Booster.level(this);
         new Thread(() -> {
-            Booster.Result r = Booster.boost(this, aggr, pkg);
+            Booster.Result r = Booster.boost(this, lvl, pkg);
             Booster.gameModePerformance(pkg);
             h.post(() -> {
                 btnPlay.setEnabled(true);
@@ -972,6 +1024,189 @@ public class MainActivity extends Activity {
                 }).setNegativeButton("Cancelar", null).show());
         l.addView(del, btnParams(44));
         d.show();
+    }
+
+    private TextView section(String s) {
+        TextView t = text(s, 11, MUT, true);
+        t.setLetterSpacing(0.12f);
+        t.setPadding((int) dp(2), (int) dp(14), 0, (int) dp(2));
+        return t;
+    }
+
+    private void pickLevel() {
+        String[] names = {"Leve: só apps em segundo plano", "Equilibrada: fecha apps de terceiros, mantém mensagens",
+                "Máxima: fecha tudo que não é essencial e limpa caches"};
+        dialog().setTitle("Nível da limpeza de RAM").setSingleChoiceItems(names, prefs.getInt("clean_level", 1), (d, w) -> {
+            prefs.edit().putInt("clean_level", w).apply();
+            if (w > 0 && !Shell.granted()) toast("Os níveis Equilibrada e Máxima precisam do modo avançado conectado.");
+            d.dismiss();
+        }).setNegativeButton("Fechar", null).show();
+    }
+
+    private void pickKeep() {
+        PackageManager pm = getPackageManager();
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        final List<String> pk = new ArrayList<>(), nm = new ArrayList<>();
+        for (android.content.pm.ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
+            if (ri.activityInfo.packageName.equals(getPackageName())) continue;
+            pk.add(ri.activityInfo.packageName);
+            nm.add(String.valueOf(ri.loadLabel(pm)));
+        }
+        Integer[] ord = new Integer[pk.size()];
+        for (int i = 0; i < ord.length; i++) ord[i] = i;
+        java.util.Arrays.sort(ord, (a, b) -> nm.get(a).compareToIgnoreCase(nm.get(b)));
+        final java.util.Set<String> keep = Booster.userKeep(this);
+        final String[] names = new String[ord.length];
+        final boolean[] on = new boolean[ord.length];
+        for (int i = 0; i < ord.length; i++) {
+            names[i] = nm.get(ord[i]);
+            on[i] = keep.contains(pk.get(ord[i]));
+        }
+        dialog().setTitle("Apps que nunca serão fechados").setMultiChoiceItems(names, on, (d, i, c) -> on[i] = c)
+                .setPositiveButton("Salvar", (d, w) -> {
+                    java.util.Set<String> out = new java.util.HashSet<>();
+                    for (int i = 0; i < on.length; i++) if (on[i]) out.add(pk.get(ord[i]));
+                    prefs.edit().putStringSet("keep_apps", out).apply();
+                }).setNegativeButton("Cancelar", null).show();
+    }
+
+    private static final int[] AUTO_PCT = {0, 75, 80, 85, 90};
+
+    private void cycleAutoClean() {
+        int cur = prefs.getInt("auto_clean_pct", 0), next = AUTO_PCT[0];
+        for (int i = 0; i < AUTO_PCT.length; i++) if (AUTO_PCT[i] == cur) next = AUTO_PCT[(i + 1) % AUTO_PCT.length];
+        prefs.edit().putInt("auto_clean_pct", next).apply();
+    }
+
+    private void loadPlayTime() {
+        new Thread(() -> {
+            PlayTime.update(this);
+            final java.util.Map<String, java.util.Map<String, Long>> all = PlayTime.load(this);
+            h.post(() -> fillPlayTime(all));
+        }).start();
+    }
+
+    private String[] dayKeys(int n) {
+        String[] k = new String[n];
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        for (int i = n - 1; i >= 0; i--) {
+            k[i] = PlayTime.key(c.getTimeInMillis());
+            c.add(java.util.Calendar.DAY_OF_MONTH, -1);
+        }
+        return k;
+    }
+
+    private void fillPlayTime(java.util.Map<String, java.util.Map<String, Long>> all) {
+        boolean perm = Games.hasUsageAccess(this);
+        ptPerm.setVisibility(perm ? View.GONE : View.VISIBLE);
+        String[] k30 = dayKeys(30), k14 = dayKeys(14);
+        long today = PlayTime.dayTotal(all, k30[29]), week = 0, month = 0, best = 0;
+        String bestDay = null;
+        for (int i = 0; i < 30; i++) {
+            long t = PlayTime.dayTotal(all, k30[i]);
+            month += t;
+            if (i >= 23) week += t;
+            if (t > best) {
+                best = t;
+                bestDay = k30[i];
+            }
+        }
+        tvPtToday.setText(PlayTime.fmt(today));
+        tvPtWeek.setText(PlayTime.fmt(week));
+        tvPtMonth.setText(PlayTime.fmt(month));
+
+        float[] vals = new float[14];
+        String[] top = new String[14], bot = new String[14];
+        for (int i = 0; i < 14; i++) {
+            long t = PlayTime.dayTotal(all, k14[i]);
+            vals[i] = t / 3600000f;
+            top[i] = PlayTime.fmtShort(t);
+            bot[i] = k14[i].substring(8);
+        }
+        ptBars.set(vals, top, bot);
+
+        java.text.SimpleDateFormat df = new java.text.SimpleDateFormat("EEE dd/MM", new Locale("pt", "BR"));
+        ptSummary.setText("Média diária (30 dias): " + PlayTime.fmt(month / 30) + (bestDay == null ? ""
+                : "\nDia mais jogado: " + bestDay.substring(8) + "/" + bestDay.substring(5, 7) + " (" + PlayTime.fmt(best) + ")"));
+
+        ptDays.removeAllViews();
+        for (int i = 29; i >= 23; i--) {
+            long t = PlayTime.dayTotal(all, k30[i]);
+            String top1 = null;
+            long tv = 0;
+            java.util.Map<String, Long> m = all.get(k30[i]);
+            if (m != null) for (java.util.Map.Entry<String, Long> e : m.entrySet()) if (e.getValue() > tv) {
+                tv = e.getValue();
+                top1 = e.getKey();
+            }
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, (int) dp(7), 0, (int) dp(7));
+            String label;
+            try {
+                label = df.format(new java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(k30[i]));
+            } catch (Exception ex) {
+                label = k30[i];
+            }
+            TextView a = text(label + (i == 29 ? " (hoje)" : ""), 13, TXT, false);
+            row.addView(a, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            TextView b = text(t == 0 ? "-" : PlayTime.fmt(t) + (top1 == null ? "" : "  ·  " + Games.label(this, top1)), 12, t == 0 ? MUT : OK, false);
+            b.setSingleLine(true);
+            b.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            b.setMaxWidth((int) dp(190));
+            row.addView(b);
+            ptDays.addView(row);
+        }
+
+        java.util.Map<String, long[]> per = new java.util.HashMap<>();
+        for (int i = 0; i < 30; i++) {
+            java.util.Map<String, Long> m = all.get(k30[i]);
+            if (m == null) continue;
+            for (java.util.Map.Entry<String, Long> e : m.entrySet()) {
+                long[] s = per.get(e.getKey());
+                if (s == null) per.put(e.getKey(), s = new long[3]);
+                s[2] += e.getValue();
+                if (i >= 23) s[1] += e.getValue();
+                if (i == 29) s[0] += e.getValue();
+            }
+        }
+        final List<java.util.Map.Entry<String, long[]>> list = new ArrayList<>(per.entrySet());
+        java.util.Collections.sort(list, (x, y) -> Long.compare(y.getValue()[2], x.getValue()[2]));
+        ptGames.removeAllViews();
+        if (list.isEmpty()) {
+            ptGames.addView(text(perm ? "Ainda sem registros. O Booster lê o histórico do Android, então jogue um pouco e volte aqui."
+                    : "Conceda o acesso ao uso de apps para ver o tempo de jogo.", 13, MUT, false));
+        }
+        long top30 = list.isEmpty() ? 1 : Math.max(1, list.get(0).getValue()[2]);
+        for (java.util.Map.Entry<String, long[]> e : list) {
+            LinearLayout row = card();
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            ImageView ic = new ImageView(this);
+            try {
+                ic.setImageDrawable(getPackageManager().getApplicationIcon(e.getKey()));
+            } catch (Exception ignored) {
+            }
+            row.addView(ic, new LinearLayout.LayoutParams((int) dp(40), (int) dp(40)));
+            LinearLayout info = new LinearLayout(this);
+            info.setOrientation(LinearLayout.VERTICAL);
+            info.setPadding((int) dp(12), 0, 0, 0);
+            info.addView(text(Games.label(this, e.getKey()), 14, TXT, true));
+            long[] s = e.getValue();
+            info.addView(text("Hoje " + PlayTime.fmt(s[0]) + "  ·  7 dias " + PlayTime.fmt(s[1]) + "  ·  30 dias " + PlayTime.fmt(s[2]), 12, MUT, false));
+            LinearLayout track = new LinearLayout(this);
+            track.setBackground(round(0xFF1B2745, 3));
+            View fillBar = new View(this);
+            fillBar.setBackground(round(0xFF4DA3FF, 3));
+            track.addView(fillBar, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, Math.max(0.02f, s[2] / (float) top30)));
+            track.addView(new View(this), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, Math.max(0f, 1f - s[2] / (float) top30)));
+            LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) dp(6));
+            tp.setMargins(0, (int) dp(8), 0, 0);
+            info.addView(track, tp);
+            row.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            ptGames.addView(row);
+        }
+        tvHomeToday.setText("Jogou hoje: " + PlayTime.fmt(today) + "  ·  7 dias: " + PlayTime.fmt(week));
     }
 
     private void updateUsage() {
