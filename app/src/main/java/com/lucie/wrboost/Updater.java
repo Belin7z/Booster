@@ -66,9 +66,49 @@ public final class Updater {
         }
     }
 
+    private static android.content.SharedPreferences prefs(Context c) {
+        return c.getSharedPreferences("wr", Context.MODE_PRIVATE);
+    }
+
+    // Já baixada e conferida (hash) no cache, pronta para instalar.
+    public static boolean ready(Context c, Info info) {
+        return prefs(c).getInt("dl_code", 0) == info.code && new java.io.File(c.getCacheDir(), "update.apk").exists();
+    }
+
+    // Atualização já baixada por uma checagem automática, ou null.
+    public static Info downloaded(Context c) {
+        android.content.SharedPreferences p = prefs(c);
+        int code = p.getInt("dl_code", 0);
+        if (code <= installedCode(c) || !new java.io.File(c.getCacheDir(), "update.apk").exists()) return null;
+        Info i = new Info();
+        i.code = code;
+        i.name = p.getString("dl_name", "");
+        i.notes = p.getString("dl_notes", "");
+        i.apk = p.getString("dl_apk", "");
+        i.sha256 = p.getString("dl_sha", "");
+        return i;
+    }
+
     public static void install(Context c, Info info, Progress cb) throws Exception {
+        if (!ready(c, info)) download(c, info, cb);
+        java.io.File apk = new java.io.File(c.getCacheDir(), "update.apk");
+        saveWhatsNew(c, info);
+        try {
+            viaSession(c, apk);
+        } catch (Exception e) {
+            viaSystemInstaller(c, apk);
+        }
+    }
+
+    // Guarda as notas para mostrar "novidades" na primeira abertura da nova versão.
+    private static void saveWhatsNew(Context c, Info info) {
+        prefs(c).edit().putInt("wn_code", info.code).putString("wn_name", info.name).putString("wn_notes", info.notes).apply();
+    }
+
+    public static void download(Context c, Info info, Progress cb) throws Exception {
         if (info.sha256.length() != 64) throw new Exception("hash ausente");
         java.io.File apk = new java.io.File(c.getCacheDir(), "update.apk");
+        prefs(c).edit().remove("dl_code").apply();
         HttpURLConnection h = open(BASE + info.apk);
         try {
             if (h.getResponseCode() != 200) throw new Exception("HTTP " + h.getResponseCode());
@@ -100,10 +140,64 @@ public final class Updater {
         } finally {
             h.disconnect();
         }
+        prefs(c).edit().putInt("dl_code", info.code).putString("dl_name", info.name).putString("dl_notes", info.notes)
+                .putString("dl_apk", info.apk).putString("dl_sha", info.sha256).apply();
+    }
+
+    private static final java.util.concurrent.atomic.AtomicBoolean autoBusy = new java.util.concurrent.atomic.AtomicBoolean();
+
+    // Chamada pelo serviço: a cada 6 h confere e baixa sozinho (só em rede sem tarifa), e avisa para instalar.
+    public static void autoCheck(final Context c) {
+        final Context app = c.getApplicationContext();
+        android.content.SharedPreferences p = prefs(app);
+        long now = System.currentTimeMillis();
+        if (!p.getBoolean("auto_update", true) || now - p.getLong("auto_at", 0) < 6 * 3600_000L) return;
+        android.net.ConnectivityManager cm = app.getSystemService(android.net.ConnectivityManager.class);
+        if (cm == null || cm.isActiveNetworkMetered() || cm.getActiveNetwork() == null) return;
+        if (!autoBusy.compareAndSet(false, true)) return;
+        p.edit().putLong("auto_at", now).apply();
+        new Thread(() -> {
+            try {
+                Info i = check(app);
+                if (i == null) return;
+                if (!ready(app, i)) download(app, i, pc -> { });
+                notifyReady(app, i);
+            } catch (Throwable e) {
+                CrashLog.log(app, "Atualização automática", String.valueOf(e.getMessage()));
+            } finally {
+                autoBusy.set(false);
+            }
+        }).start();
+    }
+
+    private static void notifyReady(Context c, Info i) {
+        android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
+        nm.createNotificationChannel(new android.app.NotificationChannel("update", "Atualizações", android.app.NotificationManager.IMPORTANCE_DEFAULT));
+        Intent open = new Intent(c, MainActivity.class).putExtra(MainActivity.EXTRA_INSTALL, true).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent pi = PendingIntent.getActivity(c, 5, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        nm.notify(5, new android.app.Notification.Builder(c, "update").setSmallIcon(R.drawable.ic_bolt)
+                .setContentTitle("Booster v" + i.name + " pronto para instalar")
+                .setContentText("Toque para instalar a atualização já baixada.")
+                .setStyle(new android.app.Notification.BigTextStyle().bigText(i.notes.isEmpty() ? "Toque para instalar." : i.notes))
+                .setContentIntent(pi).setAutoCancel(true).build());
+    }
+
+    // Últimas versões publicadas, com as notas de cada uma.
+    public static java.util.List<String> history() throws Exception {
+        HttpURLConnection h = open("https://api.github.com/repos/Belin7z/Booster/releases?per_page=10");
         try {
-            viaSession(c, apk);
-        } catch (Exception e) {
-            viaSystemInstaller(c, apk);
+            h.setRequestProperty("Accept", "application/vnd.github+json");
+            if (h.getResponseCode() != 200) throw new Exception("HTTP " + h.getResponseCode());
+            org.json.JSONArray a = new org.json.JSONArray(readAll(h.getInputStream()));
+            java.util.List<String> out = new java.util.ArrayList<>();
+            for (int k = 0; k < a.length(); k++) {
+                JSONObject o = a.getJSONObject(k);
+                String body = o.optString("body", "").replace("\r", "").trim();
+                out.add(o.optString("name", o.optString("tag_name")) + "\n" + (body.isEmpty() ? "Sem notas." : body));
+            }
+            return out;
+        } finally {
+            h.disconnect();
         }
     }
 
@@ -155,7 +249,7 @@ public final class Updater {
             java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
             byte[] b = new byte[4096];
             int n;
-            while ((n = i.read(b)) > 0 && o.size() < 65536) o.write(b, 0, n);
+            while ((n = i.read(b)) > 0 && o.size() < 262144) o.write(b, 0, n);
             return o.toString("UTF-8");
         }
     }
