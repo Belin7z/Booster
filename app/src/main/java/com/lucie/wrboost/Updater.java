@@ -170,6 +170,11 @@ public final class Updater {
         }).start();
     }
 
+    // Notas em markdown simples → texto limpo para notificação.
+    static String plain(String notes) {
+        return notes.replaceAll("(?m)^#+\\s*(.*)$", "$1:").replaceAll("(?m)^[-*]\\s+", "• ");
+    }
+
     private static void notifyReady(Context c, Info i) {
         android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
         nm.createNotificationChannel(new android.app.NotificationChannel("update", "Atualizações", android.app.NotificationManager.IMPORTANCE_DEFAULT));
@@ -178,7 +183,7 @@ public final class Updater {
         nm.notify(5, new android.app.Notification.Builder(c, "update").setSmallIcon(R.drawable.ic_bolt)
                 .setContentTitle("Booster v" + i.name + " pronto para instalar")
                 .setContentText("Toque para instalar a atualização já baixada.")
-                .setStyle(new android.app.Notification.BigTextStyle().bigText(i.notes.isEmpty() ? "Toque para instalar." : i.notes))
+                .setStyle(new android.app.Notification.BigTextStyle().bigText(i.notes.isEmpty() ? "Toque para instalar." : plain(i.notes)))
                 .setContentIntent(pi).setAutoCancel(true).build());
     }
 

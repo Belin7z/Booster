@@ -43,22 +43,26 @@ jobs:
 
       - name: Notas da versão
         run: |
-          PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
-          RANGE="${PREV:+$PREV..}${GITHUB_REF_NAME}"
-          [ -z "$PREV" ] && RANGE="-1 ${GITHUB_REF_NAME}"
-          {
-            echo "## Novidades"
-            git log --no-merges --format='- %s' $RANGE
-          } > notes.md
+          if [ -f "notas/${GITHUB_REF_NAME}.md" ]; then
+            cp "notas/${GITHUB_REF_NAME}.md" notes.md
+          else
+            PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+            RANGE="${PREV:+$PREV..}${GITHUB_REF_NAME}"
+            [ -z "$PREV" ] && RANGE="-1 ${GITHUB_REF_NAME}"
+            {
+              echo "### Novidades"
+              git log --no-merges --format='- %s' $RANGE
+            } > notes.md
+          fi
           VERSION="${GITHUB_REF_NAME#v}" python3 -c "
           import json, os
-          notes = [l[2:] for l in open('notes.md').read().splitlines() if l.startswith('- ')]
+          notes = [l for l in open('notes.md').read().splitlines() if l.startswith('### ') or l.startswith('- ')]
           json.dump({
             'versionCode': int(open('code.txt').read()),
             'versionName': os.environ['VERSION'],
             'apk': 'Booster-v' + os.environ['VERSION'] + '.apk',
             'sha256': open('sha.txt').read().strip(),
-            'notes': '\n'.join(notes)[:500]
+            'notes': '\n'.join(notes)[:1500]
           }, open('latest.json', 'w'), ensure_ascii=False, indent=2)
           "
 
