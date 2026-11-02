@@ -1,6 +1,8 @@
 package com.lucie.wrboost;
 
 import android.app.ActivityManager;
+import android.app.NotificationManager;
+import android.content.SharedPreferences;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
@@ -14,12 +16,6 @@ import java.util.List;
 import java.util.Set;
 
 public final class Booster {
-    public static final String[] GAME_PACKAGES = {
-            "com.riotgames.league.wildrift",
-            "com.riotgames.league.wildrifttw",
-            "com.riotgames.league.wildriftvn"
-    };
-
     private static final String[] PROTECTED_PREFIXES = {
             "com.android.", "com.google.android.gms", "com.google.android.gsf",
             "com.miui.", "com.xiaomi.", "android", "com.mediatek", "com.lucie.wrboost"
@@ -36,18 +32,10 @@ public final class Booster {
         public long freedBytes;
     }
 
-    public static String gamePackage(Context c) {
-        PackageManager pm = c.getPackageManager();
-        for (String g : GAME_PACKAGES) {
-            if (pm.getLaunchIntentForPackage(g) != null) return g;
-        }
-        return null;
-    }
-
-    public static Result boost(Context c, boolean aggressive) {
+    public static Result boost(Context c, boolean aggressive, String game) {
         PackageManager pm = c.getPackageManager();
         ActivityManager am = (ActivityManager) c.getSystemService(Context.ACTIVITY_SERVICE);
-        Set<String> keep = protectedPackages(c);
+        Set<String> keep = protectedPackages(c, game);
 
         ActivityManager.MemoryInfo before = new ActivityManager.MemoryInfo();
         am.getMemoryInfo(before);
@@ -97,8 +85,9 @@ public final class Booster {
         if (Parsers.safePackage(pkg) && Shell.granted()) Shell.exec("cmd game mode performance " + pkg, 3000);
     }
 
-    private static Set<String> protectedPackages(Context c) {
-        Set<String> keep = new HashSet<>(Arrays.asList(GAME_PACKAGES));
+    private static Set<String> protectedPackages(Context c, String game) {
+        Set<String> keep = new HashSet<>();
+        if (game != null) keep.add(game);
         PackageManager pm = c.getPackageManager();
 
         Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
@@ -115,8 +104,27 @@ public final class Booster {
         return false;
     }
 
-    public static Intent gameLaunchIntent(Context c) {
-        String g = gamePackage(c);
-        return g == null ? null : c.getPackageManager().getLaunchIntentForPackage(g);
+    public static Intent launchIntent(Context c, String pkg) {
+        return pkg == null ? null : c.getPackageManager().getLaunchIntentForPackage(pkg);
+    }
+
+    public static boolean dndAllowed(Context c) {
+        return c.getSystemService(NotificationManager.class).isNotificationPolicyAccessGranted();
+    }
+
+    public static void enableDnd(Context c) {
+        if (!dndAllowed(c)) return;
+        NotificationManager nm = c.getSystemService(NotificationManager.class);
+        SharedPreferences p = c.getSharedPreferences("wr", Context.MODE_PRIVATE);
+        if (!p.contains("prevFilter")) p.edit().putInt("prevFilter", nm.getCurrentInterruptionFilter()).apply();
+        nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY);
+    }
+
+    public static void restoreDnd(Context c) {
+        SharedPreferences p = c.getSharedPreferences("wr", Context.MODE_PRIVATE);
+        if (p.contains("prevFilter") && dndAllowed(c)) {
+            c.getSystemService(NotificationManager.class).setInterruptionFilter(p.getInt("prevFilter", NotificationManager.INTERRUPTION_FILTER_ALL));
+            p.edit().remove("prevFilter").apply();
+        }
     }
 }
