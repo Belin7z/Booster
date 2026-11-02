@@ -26,11 +26,14 @@ public class OverlayService extends Service {
 
     private WindowManager wm;
     private TextView view;
+    private GamePanel panel;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable tick = new Runnable() {
         @Override
         public void run() {
             update();
+            if (panel == null) panel = new GamePanel(OverlayService.this);
+            panel.tick();
             h.postDelayed(this, 1000);
         }
     };
@@ -127,6 +130,7 @@ public class OverlayService extends Service {
             Monitor.release();
             acquired = false;
         }
+        if (panel != null) panel.destroy();
         removeOverlay();
         super.onDestroy();
     }

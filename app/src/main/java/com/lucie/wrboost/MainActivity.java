@@ -325,6 +325,13 @@ public class MainActivity extends Activity {
         tvAutoClean = rowItem(cl, "", R.drawable.ic_timer, v -> cycleAutoClean());
         set.addView(cl);
         set.addView(text("Os níveis Equilibrada e Máxima fecham apps de verdade e precisam do modo avançado conectado. Na Máxima, só o telefone, as mensagens SMS e os apps que você marcar sobrevivem; o resto precisa ser aberto de novo. A limpeza automática roda durante o jogo quando a RAM passa do limite, no máximo a cada 3 minutos.", 12, MUT, false));
+        set.addView(section("PAINEL NO JOGO"));
+        LinearLayout gpc = card();
+        sw(gpc, "Bolha do Booster durante o jogo", "panel", true)
+                .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("panel", on).apply());
+        rowItem(gpc, "Apps do painel (acesso sem sair do jogo)", R.drawable.ic_add, v -> pickApps("panel_apps", "Apps no painel do jogo", GamePanel.apps(this)));
+        set.addView(gpc);
+        set.addView(text("Durante o jogo aparece uma bolha na lateral da tela. Toque nela para liberar RAM, ligar o Não perturbe ou abrir outros apps. Com o modo avançado conectado, o app abre em janela flutuante quando o sistema permitir.", 12, MUT, false));
         set.addView(section("DETECÇÃO DE JOGOS"));
         LinearLayout det = card();
         sw(det, "Detectar jogos automaticamente", "auto", true).setOnCheckedChangeListener((v, on) -> {
@@ -1044,6 +1051,10 @@ public class MainActivity extends Activity {
     }
 
     private void pickKeep() {
+        pickApps("keep_apps", "Apps que nunca serão fechados", Booster.userKeep(this));
+    }
+
+    private void pickApps(String key, String title, java.util.Collection<String> current) {
         PackageManager pm = getPackageManager();
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         final List<String> pk = new ArrayList<>(), nm = new ArrayList<>();
@@ -1055,18 +1066,18 @@ public class MainActivity extends Activity {
         Integer[] ord = new Integer[pk.size()];
         for (int i = 0; i < ord.length; i++) ord[i] = i;
         java.util.Arrays.sort(ord, (a, b) -> nm.get(a).compareToIgnoreCase(nm.get(b)));
-        final java.util.Set<String> keep = Booster.userKeep(this);
+        final java.util.Set<String> keep = new java.util.HashSet<>(current);
         final String[] names = new String[ord.length];
         final boolean[] on = new boolean[ord.length];
         for (int i = 0; i < ord.length; i++) {
             names[i] = nm.get(ord[i]);
             on[i] = keep.contains(pk.get(ord[i]));
         }
-        dialog().setTitle("Apps que nunca serão fechados").setMultiChoiceItems(names, on, (d, i, c) -> on[i] = c)
+        dialog().setTitle(title).setMultiChoiceItems(names, on, (d, i, c) -> on[i] = c)
                 .setPositiveButton("Salvar", (d, w) -> {
                     java.util.Set<String> out = new java.util.HashSet<>();
                     for (int i = 0; i < on.length; i++) if (on[i]) out.add(pk.get(ord[i]));
-                    prefs.edit().putStringSet("keep_apps", out).apply();
+                    prefs.edit().putStringSet(key, out).apply();
                 }).setNegativeButton("Cancelar", null).show();
     }
 
