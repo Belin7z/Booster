@@ -41,12 +41,16 @@ public final class Shell {
         }
     }
 
-    public static boolean granted() {
+    public static boolean shizukuGranted() {
         try {
             return running() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED;
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    public static boolean granted() {
+        return Adb.connected() || shizukuGranted();
     }
 
     public static void request(int code) {
@@ -94,8 +98,13 @@ public final class Shell {
     }
 
     // Executa e devolve a saída; null se não houver acesso ou se estourar o tempo.
-    public static synchronized String exec(String cmd, long timeoutMs) {
-        if (!granted()) return null;
+    public static String exec(String cmd, long timeoutMs) {
+        if (Adb.connected()) return Adb.exec(cmd, timeoutMs);
+        return execShizuku(cmd, timeoutMs);
+    }
+
+    private static synchronized String execShizuku(String cmd, long timeoutMs) {
+        if (!shizukuGranted()) return null;
         try {
             ensure();
             q.clear();
