@@ -49,6 +49,9 @@ public class MainActivity extends Activity {
     private Switch swOverlay, swDnd, swAggr;
     private TextView tvAdb, tvFpsTarget, tvFpsTarget2, tvPreview, tvRates;
     private Button btnAdb, btnForget;
+    private LinearLayout gamesList, reportsList;
+    private TextView tvUsage;
+    private int reportsVer = -1;
     private Button btnPlay, btnBoost, btnShizuku, btnUpdate;
     private TextView tvUpdate;
     private Updater.Info pending;
@@ -115,9 +118,13 @@ public class MainActivity extends Activity {
         tvTip = text("", 14, TXT, false);
         tipCard.addView(tvTip);
         home.addView(tipCard);
-        btnPlay = button("Jogar Wild Rift", 0xFF4DA3FF, 0xFF04101F);
+        btnPlay = button("Jogar", 0xFF4DA3FF, 0xFF04101F);
         withIcon(btnPlay, R.drawable.ic_play, 0xFF04101F);
-        btnPlay.setOnClickListener(v -> play());
+        btnPlay.setOnClickListener(v -> {
+            String g = lastGame();
+            if (g == null) showPage(1);
+            else play(g);
+        });
         home.addView(btnPlay, btnParams(56));
         LinearLayout acts = new LinearLayout(this);
         btnBoost = button("Liberar RAM", 0xFF1D2A4A, TXT);
@@ -140,8 +147,26 @@ public class MainActivity extends Activity {
         tvResult.setGravity(Gravity.CENTER);
         home.addView(tvResult);
 
+        // Jogos
+        LinearLayout gm = page("Jogos", R.drawable.ic_gamepad);
+        gm.addView(text("Os jogos instalados são detectados automaticamente. Se algum não aparecer, adicione manualmente. Toque no jogo para opções.", 12, MUT, false));
+        Button addGame = button("Adicionar jogo", 0xFF1D2A4A, TXT);
+        withIcon(addGame, R.drawable.ic_add, TXT);
+        addGame.setTextSize(14);
+        addGame.setOnClickListener(v -> pickGames());
+        gm.addView(addGame, btnParams(46));
+        gamesList = new LinearLayout(this);
+        gamesList.setOrientation(LinearLayout.VERTICAL);
+        gm.addView(gamesList);
+
+        // Relatórios
+        LinearLayout rp = page("Relatórios", R.drawable.ic_chart);
+        reportsList = new LinearLayout(this);
+        reportsList.setOrientation(LinearLayout.VERTICAL);
+        rp.addView(reportsList);
+
         // Desempenho
-        LinearLayout perf = page("Desempenho", R.drawable.ic_chart);
+        LinearLayout perf = page("Desempenho", R.drawable.ic_speed);
         gFps = new GraphView(this, "FPS (últimos 2 min)", 0xFF4DA3FF, 0, 60);
         gCpu = new GraphView(this, "Temperatura da CPU °C", 0xFFFF7A59, 30, 50);
         perf.addView(gFps, graphParams());
@@ -252,6 +277,19 @@ public class MainActivity extends Activity {
         tvPreview = text("", 13, TXT, false);
         pv.addView(tvPreview);
         set.addView(pv);
+        set.addView(text("DETECÇÃO DE JOGOS", 11, MUT, true));
+        LinearLayout det = card();
+        sw(det, "Detectar jogos automaticamente", "auto", true).setOnCheckedChangeListener((v, on) -> {
+            prefs.edit().putBoolean("auto", on).apply();
+            if (on && !OverlayService.running) startForegroundService(new Intent(this, OverlayService.class));
+        });
+        sw(det, "Otimizar ao abrir um jogo (liberar RAM, Game Mode)", "auto_boost", true)
+                .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("auto_boost", on).apply());
+        sw(det, "Mostrar o monitor só durante jogos", "ov_only_game", false)
+                .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("ov_only_game", on).apply());
+        tvUsage = rowItem(det, "", R.drawable.ic_check, v -> openAction(Settings.ACTION_USAGE_ACCESS_SETTINGS));
+        set.addView(det);
+        set.addView(text("Com o acesso ao uso de apps (ou o modo avançado conectado) o Booster sabe qual jogo está aberto, mede o FPS dele e grava o relatório sozinho.", 12, MUT, false));
         set.addView(text("PERMISSÕES", 11, MUT, true));
         LinearLayout perms = card();
         tvOverlayPerm = rowItem(perms, "", R.drawable.ic_check, v -> askOverlay());
@@ -321,6 +359,7 @@ public class MainActivity extends Activity {
 
         setContentView(root);
         showPage(0);
+        if (prefs.getBoolean("auto", true) && !OverlayService.running) startForegroundService(new Intent(this, OverlayService.class));
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
         if (System.currentTimeMillis() - prefs.getLong("lastCheck", 0) > 6 * 3600_000L) checkUpdate(false);
     }
@@ -422,7 +461,7 @@ public class MainActivity extends Activity {
         }
         prefs.edit().putBoolean("overlay", true).apply();
         swOverlay.setChecked(true);
-        Monitor.startSession();
+        Monitor.startSession(null);
         startForegroundService(new Intent(this, OverlayService.class));
         toast("Monitor ligado. Abra o jogo.");
     }
@@ -482,6 +521,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         Monitor.acquire(this);
+        reportsVer = -1;
         h.post(tick);
     }
 
@@ -494,6 +534,13 @@ public class MainActivity extends Activity {
 
     private void refresh() {
         Monitor.Sample m = Monitor.latest;
+        if (reportsVer != Reports.version || reportsVer < 0) {
+            reportsVer = Reports.version;
+            refreshGames();
+            refreshReports();
+        }
+        tvLast.setText(prefs.getString("last", "Nenhuma sessão ainda."));
+        updateUsage();
         updateShizuku();
         updateAdb();
         updateChrome();
@@ -643,7 +690,7 @@ public class MainActivity extends Activity {
         tvResult.setText("Liberando…");
         final boolean aggr = aggressive();
         new Thread(() -> {
-            Booster.Result r = Booster.boost(this, aggr);
+            Booster.Result r = Booster.boost(this, aggr, null);
             h.post(() -> {
                 btnBoost.setEnabled(true);
                 showResult(r);
@@ -657,57 +704,278 @@ public class MainActivity extends Activity {
                 + (mb > 0 ? "+" + mb + " MB livres" : "sem ganho (já estava limpo)"));
     }
 
-    private void play() {
+    private void play(final String pkg) {
         if (prefs.getBoolean("overlay", true) && !Settings.canDrawOverlays(this)) {
             askOverlay();
             return;
         }
-        final Intent game = Booster.gameLaunchIntent(this);
+        final Intent game = Booster.launchIntent(this, pkg);
         if (game == null) {
-            toast("Wild Rift não encontrado neste celular.");
+            toast("Jogo não encontrado neste celular.");
             return;
         }
+        prefs.edit().putString("last_game", pkg).apply();
         btnPlay.setEnabled(false);
         tvResult.setText("Otimizando…");
         final boolean aggr = aggressive();
-        final String pkg = Booster.gamePackage(this);
         new Thread(() -> {
-            Booster.Result r = Booster.boost(this, aggr);
+            Booster.Result r = Booster.boost(this, aggr, pkg);
             Booster.gameModePerformance(pkg);
             h.post(() -> {
                 btnPlay.setEnabled(true);
                 showResult(r);
-                if (swDnd.isChecked() && dndAllowed()) enableDnd();
-                Monitor.startSession();
+                if (swDnd.isChecked()) Booster.enableDnd(this);
+                if (Monitor.sessionActive()) Monitor.endSession();
+                Monitor.startSession(pkg);
                 startForegroundService(new Intent(this, OverlayService.class));
                 startActivity(game);
+                updatePlay();
             });
         }).start();
     }
 
     private boolean dndAllowed() {
-        return getSystemService(NotificationManager.class).isNotificationPolicyAccessGranted();
-    }
-
-    private void enableDnd() {
-        NotificationManager nm = getSystemService(NotificationManager.class);
-        if (!prefs.contains("prevFilter")) prefs.edit().putInt("prevFilter", nm.getCurrentInterruptionFilter()).apply();
-        nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY);
+        return Booster.dndAllowed(this);
     }
 
     private void endSession() {
-        startService(new Intent(this, OverlayService.class).setAction(OverlayService.ACTION_STOP));
-        if (prefs.contains("prevFilter") && dndAllowed()) {
-            int prev = prefs.getInt("prevFilter", NotificationManager.INTERRUPTION_FILTER_ALL);
-            getSystemService(NotificationManager.class).setInterruptionFilter(prev);
-            prefs.edit().remove("prevFilter").apply();
+        if (!prefs.getBoolean("auto", true)) {
+            startService(new Intent(this, OverlayService.class).setAction(OverlayService.ACTION_STOP));
         }
+        Booster.restoreDnd(this);
         String sum = Monitor.endSession();
-        if (sum != null) {
-            prefs.edit().putString("last", sum).apply();
-            tvLast.setText(sum);
-        }
+        if (sum != null) tvLast.setText(sum);
         tvResult.setText("Sessão encerrada. Deixe o celular esfriar antes da próxima partida.");
+    }
+
+    private String lastGame() {
+        String g = prefs.getString("last_game", null);
+        if (g != null && Booster.launchIntent(this, g) != null) return g;
+        List<Games.Game> l = Games.list(this);
+        return l.isEmpty() ? null : l.get(0).pkg;
+    }
+
+    private void updatePlay() {
+        String g = lastGame();
+        btnPlay.setText(g == null ? "Escolher jogo" : "Jogar " + Games.label(this, g));
+    }
+
+    private void refreshGames() {
+        gamesList.removeAllViews();
+        List<Games.Game> gl = Games.list(this);
+        java.util.Map<String, Reports.Agg> agg = new java.util.HashMap<>();
+        for (Reports.Agg a : Reports.byGame(this)) agg.put(a.pkg, a);
+        if (gl.isEmpty()) {
+            gamesList.addView(text("Nenhum jogo encontrado. Toque em Adicionar jogo.", 13, MUT, false));
+        }
+        for (Games.Game g : gl) gamesList.addView(gameRow(g, agg.get(g.pkg)));
+        updatePlay();
+    }
+
+    private View gameRow(final Games.Game g, Reports.Agg a) {
+        LinearLayout row = card();
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView ic = new ImageView(this);
+        try {
+            ic.setImageDrawable(getPackageManager().getApplicationIcon(g.pkg));
+        } catch (Exception ignored) {
+        }
+        row.addView(ic, new LinearLayout.LayoutParams((int) dp(44), (int) dp(44)));
+        LinearLayout info = new LinearLayout(this);
+        info.setOrientation(LinearLayout.VERTICAL);
+        info.setPadding((int) dp(12), 0, (int) dp(8), 0);
+        info.addView(text(g.label, 15, TXT, true));
+        String sub = a == null ? "Sem sessões ainda" : a.sessions + (a.sessions == 1 ? " sessão · " : " sessões · ")
+                + Reports.duration(a.totalSec) + (a.avgFps > 0 ? " · " + a.avgFps + " FPS" : "");
+        info.addView(text(sub, 12, MUT, false));
+        row.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        ImageView go = new ImageView(this);
+        go.setImageDrawable(icon(R.drawable.ic_play, 0xFF04101F));
+        go.setBackground(round(0xFF4DA3FF, 12));
+        int p = (int) dp(10);
+        go.setPadding(p, p, p, p);
+        go.setOnClickListener(v -> play(g.pkg));
+        row.addView(go, new LinearLayout.LayoutParams((int) dp(44), (int) dp(44)));
+        row.setOnClickListener(v -> showGameOptions(g));
+        return row;
+    }
+
+    private android.app.AlertDialog.Builder dialog() {
+        return new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert);
+    }
+
+    private int gameTarget(String pkg) {
+        return prefs.getInt("gt_" + pkg, 0);
+    }
+
+    private void showGameOptions(final Games.Game g) {
+        int t = gameTarget(g.pkg);
+        String[] items = {"Jogar", "Taxa alvo de FPS: " + (t == 0 ? "padrão" : t + " Hz"), "Ver relatório", "Remover da lista"};
+        dialog().setTitle(g.label).setItems(items, (d, which) -> {
+            if (which == 0) {
+                play(g.pkg);
+            } else if (which == 1) {
+                int[] rates = Monitor.supportedRates(this);
+                int next = 0;
+                if (t == 0) next = rates[0];
+                else for (int i = 0; i < rates.length; i++) if (rates[i] == t) next = i + 1 < rates.length ? rates[i + 1] : 0;
+                prefs.edit().putInt("gt_" + g.pkg, next).apply();
+                toast(next == 0 ? "Taxa alvo: padrão" : "Taxa alvo: " + next + " Hz");
+            } else if (which == 2) {
+                showReportDialog(g.pkg, g.label);
+            } else {
+                Games.remove(this, g.pkg);
+                refreshGames();
+            }
+        }).setNegativeButton("Fechar", null).show();
+    }
+
+    private void pickGames() {
+        final List<Games.Game> cands = Games.candidates(this);
+        String[] names = new String[cands.size()];
+        for (int i = 0; i < names.length; i++) names[i] = cands.get(i).label;
+        final boolean[] on = new boolean[names.length];
+        dialog().setTitle("Adicionar jogos").setMultiChoiceItems(names, on, (d, i, c) -> on[i] = c)
+                .setPositiveButton("Adicionar", (d, w) -> {
+                    for (int i = 0; i < on.length; i++) if (on[i]) Games.add(this, cands.get(i).pkg);
+                    refreshGames();
+                }).setNegativeButton("Cancelar", null).show();
+    }
+
+    private int gradeColor(int score) {
+        return score < 0 ? MUT : score >= 80 ? OK : score >= 65 ? 0xFF4DA3FF : score >= 50 ? WARN : BAD;
+    }
+
+    private void refreshReports() {
+        reportsList.removeAllViews();
+        List<Reports.Agg> ags = Reports.byGame(this);
+        if (ags.isEmpty()) {
+            reportsList.addView(text("Nenhuma sessão registrada ainda. Jogue com o Booster ativo (detecção automática ou botão Jogar) e o relatório aparece aqui ao sair do jogo.", 13, MUT, false));
+            return;
+        }
+        int sessions = 0;
+        long total = 0;
+        for (Reports.Agg a : ags) {
+            sessions += a.sessions;
+            total += a.totalSec;
+        }
+        LinearLayout sum = card();
+        sum.addView(text("Visão geral", 15, TXT, true));
+        sum.addView(text(sessions + " sessões em " + ags.size() + (ags.size() == 1 ? " jogo" : " jogos") + " · "
+                + Reports.duration(total) + " jogados", 13, MUT, false));
+        reportsList.addView(sum);
+        for (final Reports.Agg a : ags) {
+            LinearLayout row = card();
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            TextView gr = text(Reports.grade(a.avgScore), 22, gradeColor(a.avgScore), true);
+            gr.setGravity(Gravity.CENTER);
+            GradientDrawable gb = round(0xFF0F1830, 12);
+            gb.setStroke((int) dp(2), gradeColor(a.avgScore));
+            gr.setBackground(gb);
+            row.addView(gr, new LinearLayout.LayoutParams((int) dp(48), (int) dp(48)));
+            LinearLayout info = new LinearLayout(this);
+            info.setOrientation(LinearLayout.VERTICAL);
+            info.setPadding((int) dp(12), 0, 0, 0);
+            info.addView(text(a.label, 15, TXT, true));
+            info.addView(text(a.sessions + " sessões · " + Reports.duration(a.totalSec)
+                    + (a.avgFps > 0 ? " · FPS médio " + a.avgFps : ""), 12, MUT, false));
+            info.addView(text("Último jogo: " + Reports.when(a.lastPlayed), 12, MUT, false));
+            row.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            row.setOnClickListener(v -> showReportDialog(a.pkg, a.label));
+            reportsList.addView(row);
+        }
+    }
+
+    private float[] toFloats(int[] a, float div) {
+        float[] f = new float[a.length];
+        for (int i = 0; i < a.length; i++) f[i] = a[i] < 0 ? Float.NaN : a[i] / div;
+        return f;
+    }
+
+    private void showReportDialog(final String pkg, String label) {
+        final List<Reports.Record> rs = Reports.forGame(this, pkg);
+        if (rs.isEmpty()) {
+            toast("Nenhuma sessão registrada para " + label + ".");
+            return;
+        }
+        Reports.Record r = rs.get(0);
+        ScrollView sv = new ScrollView(this);
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        int pd = (int) dp(16);
+        l.setPadding(pd, pd, pd, pd);
+        sv.addView(l);
+
+        l.addView(text(r.label, 18, TXT, true));
+        l.addView(text(Reports.when(r.start) + " · " + Reports.duration(r.durSec), 12, MUT, false));
+        TextView gr = text(r.measured ? "Nota " + Reports.grade(r.score()) + "  ·  " + r.score() + "/100" : "Nota indisponível (FPS não medido)",
+                r.measured ? 20 : 13, gradeColor(r.score()), true);
+        gr.setPadding(0, (int) dp(8), 0, (int) dp(8));
+        l.addView(gr);
+
+        Locale us = Locale.US;
+        StringBuilder st = new StringBuilder();
+        if (r.measured) {
+            st.append("FPS médio ").append(r.fpsAvg).append(" / ").append(r.target).append(" · mín ").append(r.fpsMin)
+                    .append(" · máx ").append(r.fpsMax).append(" · 1% low ").append(r.low1).append('\n')
+                    .append("Estabilidade ").append(r.stablePct).append("% · travadas ").append(r.stutters).append('\n');
+        }
+        st.append("CPU máx ").append(String.format(us, "%.0f", r.cpuMax)).append("°C (média ").append(String.format(us, "%.0f", r.cpuAvg))
+                .append("°) · GPU máx ").append(String.format(us, "%.0f", r.gpuMax)).append("°C\n")
+                .append("RAM máx ").append(r.ramMaxMb).append(" MB (média ").append(r.ramAvgPct).append("%)\n")
+                .append("Bateria ").append(r.battStart).append("% → ").append(r.battEnd).append("% · limitação térmica ")
+                .append(Reports.duration(r.throttleSec));
+        l.addView(text(st.toString(), 13, TXT, false));
+
+        if (r.measured) {
+            GraphView g1 = new GraphView(this, "FPS durante a sessão", 0xFF4DA3FF, 0, Math.max(r.target, r.fpsMax));
+            g1.set(toFloats(r.fpsSeries, 1));
+            l.addView(g1, graphParams());
+        }
+        GraphView g2 = new GraphView(this, "Temperatura da CPU °C", 0xFFFF7A59, 30, 50);
+        g2.set(toFloats(r.cpuSeries, 10));
+        l.addView(g2, graphParams());
+
+        TextView it = text("Análise", 14, TXT, true);
+        it.setPadding(0, (int) dp(12), 0, (int) dp(2));
+        l.addView(it);
+        for (String s : Reports.insights(r)) l.addView(text("• " + s, 13, MUT, false));
+
+        TextView hs = text("Histórico", 14, TXT, true);
+        hs.setPadding(0, (int) dp(12), 0, (int) dp(2));
+        l.addView(hs);
+        for (int i = 0; i < Math.min(10, rs.size()); i++) {
+            Reports.Record x = rs.get(i);
+            l.addView(text(Reports.when(x.start) + " · " + Reports.duration(x.durSec) + (x.measured
+                    ? " · " + x.fpsAvg + " FPS · nota " + Reports.grade(x.score()) : " · sem FPS"), 12, MUT, false));
+        }
+
+        final android.app.AlertDialog d = dialog().setView(sv).setPositiveButton("Fechar", null).create();
+        d.getWindow().setBackgroundDrawable(round(BG, 18));
+        Button share = button("Compartilhar relatório", 0xFF1D2A4A, TXT);
+        withIcon(share, R.drawable.ic_share, TXT);
+        share.setTextSize(14);
+        share.setOnClickListener(v -> {
+            Intent i = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, Reports.text(r));
+            startActivity(Intent.createChooser(i, "Compartilhar relatório"));
+        });
+        l.addView(share, btnParams(44));
+        Button del = button("Apagar histórico deste jogo", 0xFF3A1D24, BAD);
+        withIcon(del, R.drawable.ic_delete, BAD);
+        del.setTextSize(14);
+        del.setOnClickListener(v -> dialog().setMessage("Apagar todas as sessões de " + label + "?")
+                .setPositiveButton("Apagar", (x, w) -> {
+                    Reports.clear(this, pkg);
+                    d.dismiss();
+                }).setNegativeButton("Cancelar", null).show());
+        l.addView(del, btnParams(44));
+        d.show();
+    }
+
+    private void updateUsage() {
+        tvUsage.setText("Acesso ao uso de apps: " + (Games.hasUsageAccess(this) ? "permitido" : "negado, toque para permitir"));
     }
 
     private void toast(String s) {
