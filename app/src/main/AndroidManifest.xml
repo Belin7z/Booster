@@ -38,6 +38,12 @@
             </intent-filter>
         </service>
 
+        <provider
+            android:name=".ApkProvider"
+            android:authorities="${applicationId}.apk"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
         <receiver
             android:name=".InstallReceiver"
             android:exported="false" />

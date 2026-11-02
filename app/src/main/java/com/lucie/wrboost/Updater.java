@@ -68,17 +68,13 @@ public final class Updater {
 
     public static void install(Context c, Info info, Progress cb) throws Exception {
         if (info.sha256.length() != 64) throw new Exception("hash ausente");
-        PackageInstaller pi = c.getPackageManager().getPackageInstaller();
-        PackageInstaller.SessionParams sp = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
-        int id = pi.createSession(sp);
-        PackageInstaller.Session s = pi.openSession(id);
-        HttpURLConnection h = null;
+        java.io.File apk = new java.io.File(c.getCacheDir(), "update.apk");
+        HttpURLConnection h = open(BASE + info.apk);
         try {
-            h = open(BASE + info.apk);
             if (h.getResponseCode() != 200) throw new Exception("HTTP " + h.getResponseCode());
             long total = h.getContentLengthLong();
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            try (InputStream in = h.getInputStream(); OutputStream out = s.openWrite("update.apk", 0, total)) {
+            try (InputStream in = h.getInputStream(); OutputStream out = new java.io.FileOutputStream(apk)) {
                 byte[] buf = new byte[32768];
                 long done = 0;
                 int n, last = -1;
@@ -94,12 +90,34 @@ public final class Updater {
                         }
                     }
                 }
-                s.fsync(out);
             }
             StringBuilder hex = new StringBuilder();
             for (byte b : md.digest()) hex.append(String.format("%02x", b));
-            if (!hex.toString().equals(info.sha256)) throw new Exception("arquivo corrompido (hash diferente)");
+            if (!hex.toString().equals(info.sha256)) {
+                apk.delete();
+                throw new Exception("arquivo corrompido (hash diferente)");
+            }
+        } finally {
+            h.disconnect();
+        }
+        try {
+            viaSession(c, apk);
+        } catch (Exception e) {
+            viaSystemInstaller(c, apk);
+        }
+    }
 
+    private static void viaSession(Context c, java.io.File apk) throws Exception {
+        PackageInstaller pi = c.getPackageManager().getPackageInstaller();
+        int id = pi.createSession(new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL));
+        PackageInstaller.Session s = pi.openSession(id);
+        try {
+            try (InputStream in = new java.io.FileInputStream(apk); OutputStream out = s.openWrite("update.apk", 0, apk.length())) {
+                byte[] buf = new byte[32768];
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                s.fsync(out);
+            }
             Intent r = new Intent(c, InstallReceiver.class).setAction(ACTION_RESULT);
             PendingIntent p = PendingIntent.getBroadcast(c, id, r, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
             s.commit(p.getIntentSender());
@@ -108,8 +126,20 @@ public final class Updater {
             throw e;
         } finally {
             s.close();
-            if (h != null) h.disconnect();
         }
+    }
+
+    // Plano B para ROMs (como a HyperOS) que recusam a instalação por sessão.
+    private static void viaSystemInstaller(Context c, java.io.File apk) {
+        android.net.Uri uri = apkUri(c, apk);
+        Intent i = new Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        c.startActivity(i);
+    }
+
+    private static android.net.Uri apkUri(Context c, java.io.File f) {
+        return android.net.Uri.parse("content://" + c.getPackageName() + ".apk/update.apk");
     }
 
     private static HttpURLConnection open(String url) throws Exception {
