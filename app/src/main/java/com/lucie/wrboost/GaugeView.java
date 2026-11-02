@@ -20,15 +20,15 @@ public class GaugeView extends View {
         float d = c.getResources().getDisplayMetrics().density;
         track.setStyle(Paint.Style.STROKE);
         track.setStrokeWidth(12 * d);
-        track.setColor(0xFF1B2745);
+        track.setColor(Theme.TRACK);
         arc.setStyle(Paint.Style.STROKE);
         arc.setStrokeWidth(12 * d);
         arc.setStrokeCap(Paint.Cap.ROUND);
-        big.setColor(0xFFE8EEFC);
+        big.setColor(Theme.TXT);
         big.setTextAlign(Paint.Align.CENTER);
         big.setTextSize(44 * d);
         big.setFakeBoldText(true);
-        small.setColor(0xFF8FA0C7);
+        small.setColor(Theme.MUT);
         small.setTextAlign(Paint.Align.CENTER);
         small.setTextSize(14 * d);
     }

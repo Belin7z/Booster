@@ -29,11 +29,11 @@ public class GraphView extends View {
         line.setStrokeWidth(2 * d);
         line.setStrokeJoin(Paint.Join.ROUND);
         line.setStrokeCap(Paint.Cap.ROUND);
-        grid.setColor(0xFF243152);
-        label.setColor(0xFF8FA0C7);
+        grid.setColor(Theme.GRID);
+        label.setColor(Theme.MUT);
         label.setTextSize(11 * d);
         GradientDrawable g = new GradientDrawable();
-        g.setColor(0xFF141D33);
+        g.setColor(Theme.CARD);
         g.setCornerRadius(14 * d);
         setBackground(g);
     }
