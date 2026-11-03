@@ -609,19 +609,40 @@ public class GamePanel {
         final Intent in = Booster.launchIntent(c, pkg);
         if (in == null) return;
         in.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (!pkg.equals(c.getPackageName()) && Shell.granted() && prefs().getBoolean("panel_float", false)) {
+        if (!pkg.equals(c.getPackageName()) && Shell.granted() && prefs().getBoolean("panel_float", true)) {
             final android.content.ComponentName cn = in.getComponent();
             if (cn != null) {
-                // Tenta abrir em janela flutuante para o jogo continuar visível.
+                final int w = screenW(), hh = screenH();
+                final boolean land = w > hh;
+                // Janela centralizada: bem mais larga em paisagem, e alta em retrato.
+                final int bw = (int) (w * (land ? 0.55f : 0.92f)), bh = (int) (hh * (land ? 0.88f : 0.62f));
+                final int l = (w - bw) / 2, t = (hh - bh) / 2;
+                final String comp = cn.flattenToShortString();
                 new Thread(() -> {
-                    String out = Shell.exec("am start --windowingMode 5 -n " + cn.flattenToShortString(), 4000);
+                    String out = Shell.exec("am start --windowingMode 5 -n " + comp, 4000);
                     if (out == null || out.contains("Error") || out.contains("Exception")) {
                         h.post(() -> c.startActivity(in));
+                        return;
+                    }
+                    // Acha a tarefa recém-aberta e a deixa redimensionável, com tamanho e posição definidos.
+                    java.util.regex.Pattern pat = java.util.regex.Pattern.compile("#(\\d+) type=standard[^\\n]*" + java.util.regex.Pattern.quote(pkg));
+                    String id = null;
+                    for (int i = 0; i < 6 && id == null; i++) {
+                        try {
+                            Thread.sleep(350);
+                        } catch (InterruptedException ignored) {
+                        }
+                        String dump = Shell.exec("dumpsys activity activities | grep -E 'Task\\{' | grep " + pkg, 3000);
+                        if (dump == null) continue;
+                        java.util.regex.Matcher m = pat.matcher(dump);
+                        while (m.find()) id = m.group(1);
+                    }
+                    if (id != null) {
+                        Shell.exec("am task resizeable " + id + " 3; am task resize " + id + " " + l + " " + t + " " + (l + bw) + " " + (t + bh), 4000);
                     }
                 }).start();
                 return;
             }
-        }
-        c.startActivity(in);
+        }        c.startActivity(in);
     }
 }

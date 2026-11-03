@@ -406,12 +406,12 @@ public class MainActivity extends Activity {
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("panel", on).apply());
         sw(gpc, "Esconder na borda quando parada", "bubble_dock", true)
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("bubble_dock", on).apply());
-        sw(gpc, "Abrir apps rápidos em janela flutuante (experimental)", "panel_float", false)
+        sw(gpc, "Abrir apps rápidos em janela flutuante", "panel_float", true)
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("panel_float", on).apply());
         tvBubble = rowItem(gpc, "", R.drawable.ic_overlay, v -> cycleBubble());
         rowItem(gpc, "Apps do painel (acesso sem sair do jogo)", R.drawable.ic_add, v -> pickApps("panel_apps", "Apps no painel do jogo", GamePanel.apps(this)));
         cBub.addView(gpc);
-        cBub.addView(text("A bolha aparece sozinha ao entrar em qualquer jogo da sua biblioteca, mesmo aberto fora do app (precisa do acesso de uso). Arraste-a para qualquer ponto da tela; parada, ela fica translúcida e se esconde na borda. Toque nela para liberar RAM, ligar o Não perturbe ou abrir outros apps. Por padrão os apps abrem em tela cheia; a janela flutuante é experimental e pode ficar sem ajuste em algumas ROMs.", 12, MUT, false));
+        cBub.addView(text("A bolha aparece sozinha ao entrar em qualquer jogo da sua biblioteca, mesmo aberto fora do app (precisa do acesso de uso). Arraste-a para qualquer ponto da tela; parada, ela fica translúcida e se esconde na borda. Toque nela para liberar RAM, ligar o Não perturbe ou abrir outros apps. Com o modo avançado conectado, os apps abrem em janela flutuante centralizada; sem ele, ou se o sistema recusar, abrem em tela cheia.", 12, MUT, false));
         sw(det, "Detectar jogos automaticamente", "auto", true).setOnCheckedChangeListener((v, on) -> {
             prefs.edit().putBoolean("auto", on).apply();
             if (on && !OverlayService.running) startForegroundService(new Intent(this, OverlayService.class));
