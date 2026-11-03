@@ -26,7 +26,7 @@ public final class Reports {
         public long start;
         public int durSec, fpsAvg, fpsMin, fpsMax, low1, stutters, stablePct, hz, target, battStart, battEnd, throttleSec, dropHeatSec, dropRamSec, dropOtherSec;
         public float cpuMax, cpuAvg, gpuMax, battTempMax;
-        public int ramMaxMb, ramAvgPct;
+        public int ramMaxMb, ramAvgPct, ramBeforePct, ramAfterPct, freedMb;
         public int pingAvg, pingMax, lossPct;
         public int[] fpsSeries = new int[0], cpuSeries = new int[0];
         public boolean measured;
@@ -47,7 +47,7 @@ public final class Reports {
                     .put("hz", hz).put("tg", target).put("b0", battStart).put("b1", battEnd).put("th", throttleSec)
                     .put("cx", cpuMax).put("ca", cpuAvg).put("gx", gpuMax).put("bx", battTempMax)
                     .put("dh", dropHeatSec).put("dr", dropRamSec).put("do", dropOtherSec).put("rm", ramMaxMb).put("ra", ramAvgPct).put("ms", measured)
-                    .put("pg", pingAvg).put("px", pingMax).put("pl", lossPct);
+                    .put("rb", ramBeforePct).put("rf", ramAfterPct).put("fm", freedMb).put("pg", pingAvg).put("px", pingMax).put("pl", lossPct);
             o.put("fs", arr(fpsSeries)).put("cs", arr(cpuSeries));
             return o;
         }
@@ -79,6 +79,9 @@ public final class Reports {
             r.dropOtherSec = o.optInt("do");
             r.ramAvgPct = o.optInt("ra");
             r.measured = o.optBoolean("ms");
+            r.ramBeforePct = o.optInt("rb");
+            r.ramAfterPct = o.optInt("rf");
+            r.freedMb = o.optInt("fm");
             r.pingAvg = o.optInt("pg");
             r.pingMax = o.optInt("px");
             r.lossPct = o.optInt("pl");
@@ -269,6 +272,7 @@ public final class Reports {
         }
         b.append("CPU máx ").append(String.format(us, "%.0f", r.cpuMax)).append("°C · GPU máx ")
                 .append(String.format(us, "%.0f", r.gpuMax)).append("°C\n");
+        if (r.freedMb > 0) b.append("Limpeza do Booster: RAM ").append(r.ramBeforePct).append("% → ").append(r.ramAfterPct).append("% (").append(r.freedMb).append(" MB liberados)\n");
         b.append("RAM máx ").append(r.ramMaxMb).append(" MB · bateria ").append(r.battStart).append("% → ").append(r.battEnd).append('%');
         return b.toString();
     }

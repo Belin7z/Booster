@@ -386,6 +386,11 @@ public class MainActivity extends Activity {
         tvHeat = rowItem(al, "", R.drawable.ic_thermo, v -> cycleHeat());
         sw(al, "Iniciar o monitor ao ligar o celular", "boot", true)
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("boot", on).apply());
+        sw(al, "Reduzir a taxa da tela para 60 Hz se esquentar", "heat_auto", false)
+                .setOnCheckedChangeListener((v, on) -> {
+                    prefs.edit().putBoolean("heat_auto", on).apply();
+                    if (on && !Shell.granted()) toast("Isso precisa do modo avançado conectado.");
+                });
         sw(al, "Avisar se a temperatura vai subir rápido", "heat_predict", true)
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("heat_predict", on).apply());
         sw(al, "Avisar quando o ping ou a perda de pacotes piorar", "net_alert", true)
@@ -424,7 +429,7 @@ public class MainActivity extends Activity {
         tvBubble = rowItem(gpc, "", R.drawable.ic_overlay, v -> cycleBubble());
         rowItem(gpc, "Apps do painel (acesso sem sair do jogo)", R.drawable.ic_add, v -> pickApps("panel_apps", "Apps no painel do jogo", GamePanel.apps(this)));
         cBub.addView(gpc);
-        cBub.addView(text("A bolha aparece sozinha ao entrar em qualquer jogo da sua biblioteca, mesmo aberto fora do app (precisa do acesso de uso). Arraste-a para qualquer ponto da tela; parada, ela fica translúcida e se esconde na borda. Toque nela para liberar RAM, ligar o Não perturbe ou abrir outros apps. Com o modo avançado conectado, os apps abrem em janela flutuante centralizada; sem ele, ou se o sistema recusar, abrem em tela cheia.", 12, MUT, false));
+        cBub.addView(text("A bolha aparece sozinha ao entrar em qualquer jogo da sua biblioteca, mesmo aberto fora do app (precisa do acesso de uso). Arraste-a para qualquer ponto da tela; parada, ela fica translúcida e se esconde na borda. Toque nela para abrir o painel, toque duas vezes para liberar RAM e segure para ligar ou desligar o Não perturbe. Com o modo avançado conectado, os apps abrem em janela flutuante centralizada; sem ele, ou se o sistema recusar, abrem em tela cheia.", 12, MUT, false));
         sw(det, "Detectar jogos automaticamente", "auto", true).setOnCheckedChangeListener((v, on) -> {
             prefs.edit().putBoolean("auto", on).apply();
             if (on && !OverlayService.running) startForegroundService(new Intent(this, OverlayService.class));
@@ -474,6 +479,20 @@ public class MainActivity extends Activity {
         send.setOnClickListener(v -> startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND).setType("text/plain")
                 .putExtra(Intent.EXTRA_SUBJECT, "Relatório do Booster").putExtra(Intent.EXTRA_TEXT, CrashLog.report(this)), "Enviar relatório")));
         dg.addView(send, btnParams(46));
+        Button chk = button("Testar recursos do aparelho", Theme.BTN2, TXT);
+        chk.setTextSize(14);
+        chk.setOnClickListener(v -> runCheck());
+        dg.addView(chk, btnParams(46));
+        Button bkp = button("Salvar cópia das configurações", Theme.BTN2, TXT);
+        bkp.setTextSize(14);
+        bkp.setOnClickListener(v -> startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("application/json").putExtra(Intent.EXTRA_TITLE, "booster-backup.json"), REQ_BACKUP));
+        dg.addView(bkp, btnParams(46));
+        Button rst = button("Restaurar cópia das configurações", Theme.BTN2, TXT);
+        rst.setTextSize(14);
+        rst.setOnClickListener(v -> startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("*/*"), REQ_RESTORE));
+        dg.addView(rst, btnParams(46));
         Button viewLog = button("Ver registro de erros", Theme.BTN2, TXT);
         viewLog.setTextSize(14);
         viewLog.setOnClickListener(v -> {
@@ -1656,7 +1675,8 @@ public class MainActivity extends Activity {
                 "Limpar RAM ao abrir: " + onOff(Profiles.rawClean(this, g.pkg)),
                 "Não perturbe: " + onOff(Profiles.rawDnd(this, g.pkg)),
                 "Brilho no jogo: " + (Profiles.rawBright(this, g.pkg) < 0 ? "não mexer" : Profiles.rawBright(this, g.pkg) + "%"),
-                "Taxa da tela no jogo: " + (Profiles.rawHz(this, g.pkg) < 0 ? "não mexer" : Profiles.rawHz(this, g.pkg) + " Hz")};
+                "Taxa da tela no jogo: " + (Profiles.rawHz(this, g.pkg) < 0 ? "não mexer" : Profiles.rawHz(this, g.pkg) + " Hz"),
+                "Monitor de FPS: " + onOff(Profiles.rawMon(this, g.pkg))};
         dialog().setTitle("Perfil: " + g.label).setItems(items, (d, which) -> {
             if (which == 0) Profiles.setLevel(this, g.pkg, Profiles.next(Profiles.rawLevel(this, g.pkg), 2));
             else if (which == 1) Profiles.setClean(this, g.pkg, Profiles.next(Profiles.rawClean(this, g.pkg), 1));
@@ -1674,7 +1694,8 @@ public class MainActivity extends Activity {
                 }
                 Profiles.setHz(this, g.pkg, nx);
                 if (nx > 0 && !Shell.granted()) toast("A taxa da tela precisa do modo avançado conectado.");
-            } else if (which == 2) Profiles.setDnd(this, g.pkg, Profiles.next(Profiles.rawDnd(this, g.pkg), 1));
+            } else if (which == 5) Profiles.setMon(this, g.pkg, Profiles.next(Profiles.rawMon(this, g.pkg), 1));
+            else if (which == 2) Profiles.setDnd(this, g.pkg, Profiles.next(Profiles.rawDnd(this, g.pkg), 1));
             showProfile(g);
         }).setNegativeButton("Fechar", null).show();
     }
@@ -1776,6 +1797,7 @@ public class MainActivity extends Activity {
         }
         st.append("CPU máx ").append(String.format(us, "%.0f", r.cpuMax)).append("°C (média ").append(String.format(us, "%.0f", r.cpuAvg))
                 .append("°) · GPU máx ").append(String.format(us, "%.0f", r.gpuMax)).append("°C\n")
+                .append(r.freedMb > 0 ? "Antes e depois do Booster: RAM " + r.ramBeforePct + "% → " + r.ramAfterPct + "% (" + r.freedMb + " MB liberados)\n" : "")
                 .append("RAM máx ").append(r.ramMaxMb).append(" MB (média ").append(r.ramAvgPct).append("%)\n")
                 .append("Bateria ").append(r.battStart).append("% → ").append(r.battEnd).append("% · limitação térmica ")
                 .append(Reports.duration(r.throttleSec));
@@ -2085,6 +2107,83 @@ public class MainActivity extends Activity {
 
     private void updateUsage() {
         tvUsage.setText("Acesso ao uso de apps: " + (Games.hasUsageAccess(this) ? "permitido" : "negado, toque para permitir"));
+    }
+
+    private static final int REQ_BACKUP = 7101, REQ_RESTORE = 7102;
+
+    private void runCheck() {
+        toast("Testando...");
+        new Thread(() -> {
+            final List<Check.Item> items = Check.run(getApplicationContext());
+            h.post(() -> {
+                if (isDestroyed()) return;
+                final String txt = Check.text(items);
+                android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
+                for (Check.Item i : items) {
+                    int s = sb.length();
+                    sb.append(i.ok ? "✓  " : "✗  ").append(i.name).append('\n');
+                    sb.setSpan(new android.text.style.ForegroundColorSpan(i.ok ? OK : BAD), s, s + 1, 0);
+                    sb.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), s + 3, sb.length(), 0);
+                    int d0 = sb.length();
+                    sb.append("    ").append(i.detail).append("\n\n");
+                    sb.setSpan(new android.text.style.ForegroundColorSpan(MUT), d0, sb.length(), 0);
+                }
+                TextView t = text("", 13, TXT, false);
+                t.setText(sb);
+                t.setPadding((int) dp(20), (int) dp(12), (int) dp(20), (int) dp(4));
+                ScrollView sv = new ScrollView(this);
+                sv.addView(t);
+                dialog().setTitle("Recursos do aparelho").setView(sv)
+                        .setPositiveButton("Fechar", null)
+                        .setNeutralButton("Copiar", (d, w) -> {
+                            ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
+                                    .setPrimaryClip(android.content.ClipData.newPlainText("Booster", txt));
+                            toast("Copiado.");
+                        }).show();
+            });
+        }).start();
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (res != RESULT_OK || data == null || data.getData() == null) return;
+        final Uri uri = data.getData();
+        if (req == REQ_BACKUP) {
+            new Thread(() -> {
+                String msg;
+                try (java.io.OutputStream o = getContentResolver().openOutputStream(uri)) {
+                    o.write(Backup.export(this).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    msg = "Cópia salva.";
+                } catch (Exception e) {
+                    msg = "Não consegui salvar a cópia.";
+                }
+                final String m = msg;
+                h.post(() -> toast(m));
+            }).start();
+        } else if (req == REQ_RESTORE) {
+            new Thread(() -> {
+                String msg;
+                boolean ok = false;
+                try (java.io.InputStream in = getContentResolver().openInputStream(uri)) {
+                    java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = in.read(buf)) > 0 && bo.size() < 4_000_000) bo.write(buf, 0, n);
+                    int k = Backup.restore(this, bo.toString("UTF-8"));
+                    msg = k + " opções restauradas. Reiniciando a tela...";
+                    ok = true;
+                } catch (Exception e) {
+                    msg = "Esse arquivo não é uma cópia válida do Booster.";
+                }
+                final String m = msg;
+                final boolean done = ok;
+                h.post(() -> {
+                    toast(m);
+                    if (done) recreate();
+                });
+            }).start();
+        }
     }
 
     private void toast(String s) {

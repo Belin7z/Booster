@@ -36,6 +36,7 @@ public final class Booster {
         public int targeted;
         public int forced;
         public long freedBytes;
+        public int pctBefore, pctAfter;
     }
 
     // Nível escolhido pelo usuário; os níveis 1 e 2 exigem o modo avançado.
@@ -82,6 +83,12 @@ public final class Booster {
         ActivityManager.MemoryInfo after = new ActivityManager.MemoryInfo();
         am.getMemoryInfo(after);
         r.freedBytes = after.availMem - before.availMem;
+        if (before.totalMem > 0) {
+            r.pctBefore = Math.round(100f * (before.totalMem - before.availMem) / before.totalMem);
+            r.pctAfter = Math.round(100f * (after.totalMem - after.availMem) / after.totalMem);
+        }
+        c.getSharedPreferences("wr", Context.MODE_PRIVATE).edit().putLong("ba_at", System.currentTimeMillis())
+                .putInt("ba_b", r.pctBefore).putInt("ba_a", r.pctAfter).putInt("ba_mb", (int) Math.max(0, r.freedBytes / 1048576)).apply();
         return r;
     }
 

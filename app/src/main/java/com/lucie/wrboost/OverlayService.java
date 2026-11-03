@@ -153,6 +153,7 @@ public class OverlayService extends Service {
         if (m == null) return;
         android.content.SharedPreferences p = getSharedPreferences("wr", MODE_PRIVATE);
         boolean show = !p.getBoolean("ov_only_game", false) || Monitor.sessionActive() || Monitor.activeGame() != null;
+        if (Profiles.rawMon(this, Monitor.activeGame()) == 0) show = false;
         view.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
         if (show) {
             view.setText(OverlayText.build(m, p));

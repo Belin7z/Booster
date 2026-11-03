@@ -30,6 +30,13 @@
             android:text="RAM"
             android:textColor="#8D99B8"
             android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/s_free"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#8D99B8"
+            android:textSize="10sp" />
     </LinearLayout>
 
     <LinearLayout

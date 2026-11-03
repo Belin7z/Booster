@@ -194,7 +194,15 @@ public class GamePanel {
         v.setOnTouchListener(new View.OnTouchListener() {
             float sx, sy;
             int ox, oy;
-            boolean moved;
+            boolean moved, longDone;
+            final Runnable tapRun = () -> openPanel();
+            final Runnable longRun = () -> {
+                if (moved) return;
+                longDone = true;
+                bubble.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+                toggleDnd();
+            };
+            long lastUp;
 
             @Override
             public boolean onTouch(View view, MotionEvent e) {
@@ -206,10 +214,15 @@ public class GamePanel {
                         ox = bubbleLp.x;
                         oy = bubbleLp.y;
                         moved = false;
+                        longDone = false;
+                        h.postDelayed(longRun, 550);
                         return true;
                     case MotionEvent.ACTION_MOVE:
                         float dx = e.getRawX() - sx, dy = e.getRawY() - sy;
-                        if (Math.abs(dx) > 8 * d || Math.abs(dy) > 8 * d) moved = true;
+                        if (Math.abs(dx) > 8 * d || Math.abs(dy) > 8 * d) {
+                            moved = true;
+                            h.removeCallbacks(longRun);
+                        }
                         if (moved) {
                             int nx = Math.max(0, Math.min(screenW() - size, (int) (ox + dx)));
                             int ny = Math.max(0, Math.min(screenH() - size, (int) (oy + dy)));
@@ -217,8 +230,20 @@ public class GamePanel {
                         }
                         return true;
                     case MotionEvent.ACTION_UP:
-                        if (!moved) {
-                            openPanel();
+                        h.removeCallbacks(longRun);
+                        if (longDone) {
+                            scheduleDock();
+                        } else if (!moved) {
+                            long now = System.currentTimeMillis();
+                            if (now - lastUp < 320) {
+                                h.removeCallbacks(tapRun);
+                                lastUp = 0;
+                                quickClean();
+                                scheduleDock();
+                            } else {
+                                lastUp = now;
+                                h.postDelayed(tapRun, 330);
+                            }
                         } else {
                             int rx = Math.max(1, screenW() - size), ry = Math.max(1, screenH() - size);
                             boolean right = bubbleLp.x + size / 2 > screenW() / 2;
@@ -531,6 +556,21 @@ public class GamePanel {
         if (dndOn()) Booster.restoreDnd(c);
         else Booster.enableDnd(c);
         h.postDelayed(this::refreshPanel, 400);
+    }
+
+    // Toque duplo na bolha: limpa a RAM sem abrir o painel.
+    private void quickClean() {
+        if (cleaning) return;
+        cleaning = true;
+        Toast.makeText(c, "Liberando RAM...", Toast.LENGTH_SHORT).show();
+        final String game = Monitor.activeGame();
+        new Thread(() -> {
+            Booster.Result r = Booster.boost(c, Profiles.level(c, game), game);
+            h.post(() -> {
+                cleaning = false;
+                Toast.makeText(c, "RAM " + r.pctBefore + "% → " + r.pctAfter + "% (" + (r.freedBytes / 1048576) + " MB liberados)", Toast.LENGTH_SHORT).show();
+            });
+        }).start();
     }
 
     private void clean() {

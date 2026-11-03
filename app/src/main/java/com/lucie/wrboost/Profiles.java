@@ -34,6 +34,15 @@ public final class Profiles {
         return pkg == null ? -1 : p(c).getInt("gp_hz_" + pkg, -1);
     }
 
+    // Monitor flutuante neste jogo: 1 mostra, 0 esconde, -1 segue a configuração geral.
+    public static int rawMon(Context c, String pkg) {
+        return pkg == null ? -1 : p(c).getInt("gp_mon_" + pkg, -1);
+    }
+
+    public static void setMon(Context c, String pkg, int v) {
+        p(c).edit().putInt("gp_mon_" + pkg, v).apply();
+    }
+
     public static void setBright(Context c, String pkg, int v) {
         p(c).edit().putInt("gp_bright_" + pkg, v).apply();
     }

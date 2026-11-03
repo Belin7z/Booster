@@ -45,6 +45,18 @@ public final class GameMode {
         }
     }
 
+    // Trava a taxa da tela em hz para esfriar o aparelho; restore() devolve ao normal.
+    public static void cool(Context c, int hz) {
+        if (!Shell.granted() || hz <= 0) return;
+        SharedPreferences sp = p(c);
+        if (!sp.contains("gm_min")) {
+            String mn = Shell.exec("settings get system min_refresh_rate", 2000);
+            String pk = Shell.exec("settings get system peak_refresh_rate", 2000);
+            sp.edit().putString("gm_min", mn == null ? "null" : mn.trim()).putString("gm_peak", pk == null ? "null" : pk.trim()).apply();
+        }
+        Shell.exec("settings put system min_refresh_rate " + hz + ".0; settings put system peak_refresh_rate " + hz + ".0", 3000);
+    }
+
     // Devolve brilho, taxa de tela e Não perturbe ao que estavam antes do jogo.
     public static void restore(Context c) {
         SharedPreferences sp = p(c);

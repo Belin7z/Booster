@@ -379,7 +379,10 @@ public final class Monitor {
         if (now - lastAlert < 120_000) return;
         if (!Float.isNaN(s.cpu) && s.cpu >= lim) {
             lastAlert = now;
-            notifyInfo("Aparelho quente: CPU em " + Math.round(s.cpu) + "°C", "Baixe o gráfico do jogo, tire a capa ou faça uma pausa curta.");
+            boolean cool = prefs().getBoolean("heat_auto", false) && Shell.granted() && s.hz > 60;
+            if (cool) new Thread(() -> GameMode.cool(app, 60)).start();
+            notifyInfo("Aparelho quente: CPU em " + Math.round(s.cpu) + "°C", cool ? "Reduzi a taxa da tela para 60 Hz para esfriar; volta ao normal ao sair do jogo."
+                    : "Baixe o gráfico do jogo, tire a capa ou faça uma pausa curta.");
         } else if (s.sys.tempC >= 42) {
             lastAlert = now;
             notifyInfo("Bateria quente: " + Math.round(s.sys.tempC) + "°C", "Evite jogar carregando para não perder desempenho.");
@@ -583,6 +586,12 @@ public final class Monitor {
         r.battTempMax = battMax;
         r.ramMaxMb = (int) (ramMax / 1048576);
         r.ramAvgPct = ticksN > 0 ? (int) (ramPctSum / ticksN) : 0;
+        long baAt = prefs().getLong("ba_at", 0);
+        if (baAt >= sStart - 180_000 && baAt <= System.currentTimeMillis()) {
+            r.ramBeforePct = prefs().getInt("ba_b", 0);
+            r.ramAfterPct = prefs().getInt("ba_a", 0);
+            r.freedMb = prefs().getInt("ba_mb", 0);
+        }
         r.pingAvg = pingN > 0 ? (int) (pingSum / pingN) : 0;
         r.pingMax = pingMaxS;
         r.lossPct = pingN > 0 ? (int) (lossSum / pingN) : 0;
@@ -603,6 +612,7 @@ public final class Monitor {
         }
         if (cpuMax > 0) b.append("CPU máx: ").append(String.format(us, "%.1f", cpuMax)).append("°C\n");
         b.append("Bateria máx: ").append(String.format(us, "%.1f", battMax)).append("°C\n");
+        if (r.freedMb > 0) b.append("Limpeza do Booster: RAM ").append(r.ramBeforePct).append("% → ").append(r.ramAfterPct).append("% (").append(r.freedMb).append(" MB)\n");
         b.append("RAM máx em uso: ").append(SystemInfo.gb(ramMax)).append(" GB\n");
         b.append("Tempo com limitação térmica: ").append(throttleSec).append(" s");
         String sum = b.toString();

@@ -36,7 +36,9 @@ public class StatsWidget extends AppWidgetProvider {
         int[] ids = m.getAppWidgetIds(new ComponentName(c, StatsWidget.class));
         if (ids.length == 0) return;
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_stats);
-        v.setTextViewText(R.id.s_ram, SystemInfo.read(c).ramUsedPct() + "%");
+        SystemInfo si = SystemInfo.read(c);
+        v.setTextViewText(R.id.s_ram, si.ramUsedPct() + "%");
+        v.setTextViewText(R.id.s_free, SystemInfo.gb(si.ramAvail) + " GB livres");
         Monitor.Sample s = Monitor.latest;
         v.setTextViewText(R.id.s_temp, s != null && !Float.isNaN(s.cpu) ? String.format(Locale.US, "%.0f°", s.cpu) : "--");
         long today = 0;
