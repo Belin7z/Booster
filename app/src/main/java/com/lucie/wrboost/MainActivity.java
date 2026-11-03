@@ -35,7 +35,8 @@ import java.util.Locale;
 public class MainActivity extends Activity {
     private static int BG, CARD, TXT, MUT;
     public static final String EXTRA_INSTALL = "install";
-    private static int resumePage = -1;
+    private static int resumePage = -1, resumeCat = -1;
+    private int curCat = -1;
     private static final int OK = 0xFF2ECC71, WARN = 0xFFF5A623, BAD = 0xFFFF5252;
 
     private final List<View> pages = new ArrayList<>();
@@ -358,14 +359,16 @@ public class MainActivity extends Activity {
             s.setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean(key, on).apply());
         }
         tvFpsTarget2 = rowItem(items, "", R.drawable.ic_speed, v -> cycleFpsTarget());
-        tvOvSize = rowItem(items, "", R.drawable.ic_tune, v -> {
-            prefs.edit().putInt("ov_size", (prefs.getInt("ov_size", 1) + 1) % 4).apply();
-            refreshOvLabels();
-        });
-        tvOvBg = rowItem(items, "", R.drawable.ic_overlay, v -> {
-            prefs.edit().putInt("ov_bg", (prefs.getInt("ov_bg", 2) + 1) % 4).apply();
-            refreshOvLabels();
-        });
+        tvOvSize = rowItem(items, "", R.drawable.ic_tune, v ->
+                choose("Tamanho do texto", OverlayText.SIZE_NAMES, prefs.getInt("ov_size", 1) % 4, i -> {
+                    prefs.edit().putInt("ov_size", i).apply();
+                    refreshOvLabels();
+                }));
+        tvOvBg = rowItem(items, "", R.drawable.ic_overlay, v ->
+                choose("Fundo do monitor", OverlayText.BG_NAMES, prefs.getInt("ov_bg", 2) % 4, i -> {
+                    prefs.edit().putInt("ov_bg", i).apply();
+                    refreshOvLabels();
+                }));
         refreshOvLabels();
         cMon.addView(items);
         cMon.addView(text("PRÉ-VISUALIZAÇÃO", 11, MUT, true));
@@ -392,13 +395,23 @@ public class MainActivity extends Activity {
         cAlert.addView(al);
         cAlert.addView(text("No Xiaomi, permita também o início automático do Booster nas permissões do app para o início com o celular funcionar.", 12, MUT, false));
         LinearLayout ap2 = card();
-        tvTheme = rowItem(ap2, "Tema: " + Theme.MODES[Theme.mode(this)], R.drawable.ic_tune, v -> {
-            prefs.edit().putInt("theme", (Theme.mode(this) + 1) % Theme.MODES.length).apply();
-            restyle();
-        });
+        tvTheme = rowItem(ap2, "Tema: " + Theme.MODES[Theme.mode(this)], R.drawable.ic_tune, v ->
+                choose("Tema", Theme.MODES, Theme.mode(this), i -> {
+                    prefs.edit().putInt("theme", i).apply();
+                    restyle();
+                }));
         tvAccent = rowItem(ap2, "Cor de destaque: " + Theme.ACCENT_NAMES[Theme.accentIndex(this)], R.drawable.ic_tune, v -> {
-            prefs.edit().putInt("accent", (Theme.accentIndex(this) + 1) % Theme.ACCENTS.length).apply();
-            restyle();
+            CharSequence[] opts2 = new CharSequence[Theme.ACCENTS.length];
+            for (int i = 0; i < opts2.length; i++) {
+                android.text.SpannableString ss = new android.text.SpannableString("●   " + Theme.ACCENT_NAMES[i]);
+                ss.setSpan(new android.text.style.ForegroundColorSpan(Theme.ACCENTS[i]), 0, 1, 0);
+                ss.setSpan(new android.text.style.RelativeSizeSpan(1.4f), 0, 1, 0);
+                opts2[i] = ss;
+            }
+            choose("Cor de destaque", opts2, Theme.accentIndex(this), i -> {
+                prefs.edit().putInt("accent", i).apply();
+                restyle();
+            });
         });
         cLook.addView(ap2);
         LinearLayout gpc = card();
@@ -600,6 +613,8 @@ public class MainActivity extends Activity {
         setContentView(root);
         showPage(resumePage >= 0 && resumePage < pages.size() ? resumePage : 0);
         resumePage = -1;
+        if (resumeCat >= 0 && resumeCat < settingsCats.size()) openCat(settingsCats.get(resumeCat));
+        resumeCat = -1;
         if (b == null) playIntro(root, main);
         h.postDelayed(() -> {
             if (isDestroyed()) return;
@@ -806,6 +821,7 @@ public class MainActivity extends Activity {
 
     private void openCat(LinearLayout c) {
         settingsHub.setVisibility(View.GONE);
+        curCat = settingsCats.indexOf(c);
         for (LinearLayout x : settingsCats) x.setVisibility(x == c ? View.VISIBLE : View.GONE);
         ((ScrollView) pages.get(pageNames.indexOf("Configurações"))).scrollTo(0, 0);
     }
@@ -813,6 +829,7 @@ public class MainActivity extends Activity {
     private boolean closeCat() {
         if (settingsHub == null || settingsHub.getVisibility() == View.VISIBLE) return false;
         for (LinearLayout x : settingsCats) x.setVisibility(View.GONE);
+        curCat = -1;
         settingsHub.setVisibility(View.VISIBLE);
         ((ScrollView) pages.get(pageNames.indexOf("Configurações"))).scrollTo(0, 0);
         return true;
@@ -900,8 +917,18 @@ public class MainActivity extends Activity {
     }
 
     private void cyclePosition() {
-        prefs.edit().putInt("pos", (prefs.getInt("pos", 0) + 1) % POS.length).apply();
-        if (OverlayService.running) startForegroundService(new Intent(this, OverlayService.class));
+        choose("Posição do monitor", POS, prefs.getInt("pos", 0) % POS.length, i -> {
+            prefs.edit().putInt("pos", i).apply();
+            updateChrome();
+        });
+    }
+
+    // Lista de opções em pop-up: toque escolhe e fecha na hora.
+    private void choose(String title, CharSequence[] names, int selected, java.util.function.IntConsumer pick) {
+        dialog().setTitle(title).setSingleChoiceItems(names, selected, (d, w) -> {
+            d.dismiss();
+            pick.accept(w);
+        }).setNegativeButton("Cancelar", null).show();
     }
 
     private void toggleMonitor() {
@@ -930,11 +957,42 @@ public class MainActivity extends Activity {
             startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName())));
             return;
         }
-        final Updater.Info info = pending;
-        dialog().setTitle("Atualizar para v" + info.name)
-                .setView(notesScroll(info.notes.isEmpty() ? "- Sem notas desta versão." : info.notes))
-                .setPositiveButton(Updater.ready(this, info) ? "Instalar" : "Baixar e instalar", (d, w) -> startInstall(info))
-                .setNegativeButton("Agora não", null).show();
+        showUpdateDialog(pending);
+    }
+
+    private void showUpdateDialog(final Updater.Info info) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding((int) dp(22), (int) dp(20), (int) dp(22), (int) dp(4));
+        LinearLayout head = new LinearLayout(this);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView ic = new ImageView(this);
+        ic.setImageDrawable(icon(R.drawable.ic_download, Theme.ONACC));
+        ic.setPadding((int) dp(11), (int) dp(11), (int) dp(11), (int) dp(11));
+        ic.setBackground(round(Theme.ACC, 24));
+        head.addView(ic, new LinearLayout.LayoutParams((int) dp(48), (int) dp(48)));
+        LinearLayout nm = new LinearLayout(this);
+        nm.setOrientation(LinearLayout.VERTICAL);
+        nm.setPadding((int) dp(14), 0, 0, 0);
+        nm.addView(text("Nova versão disponível", 12, MUT, false));
+        nm.addView(text("Booster " + info.name, 22, TXT, true));
+        nm.addView(text("Você tem a " + Updater.installedName(this), 12, MUT, false));
+        head.addView(nm);
+        box.addView(head);
+        View div = new View(this);
+        div.setBackgroundColor(Theme.LINE);
+        LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) dp(1));
+        dl.setMargins(0, (int) dp(16), 0, (int) dp(4));
+        box.addView(div, dl);
+        String notes = info.notes.isEmpty() ? "- Melhorias e correções." : info.notes;
+        ScrollView sv = new ScrollView(this);
+        sv.setVerticalScrollBarEnabled(false);
+        sv.addView(notesView(notes));
+        box.addView(sv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                notes.split("\n").length > 9 ? (int) dp(240) : ViewGroup.LayoutParams.WRAP_CONTENT));
+        dialog().setView(box)
+                .setPositiveButton(Updater.ready(this, info) ? "Instalar" : "Atualizar agora", (d, w) -> startInstall(info))
+                .setNegativeButton("Depois", null).show();
     }
 
     private void startInstall(final Updater.Info info) {
@@ -967,7 +1025,7 @@ public class MainActivity extends Activity {
                         tvUpdate.setText("Versão instalada: " + Updater.installedName(this) + " (atualizado)");
                         btnUpdate.setText("Verificar atualizações");
                     } else {
-                        tvUpdate.setText("Nova versão disponível: v" + i.name + "\n" + Updater.plain(i.notes));
+                        tvUpdate.setText("Nova versão disponível: v" + i.name);
                         tvUpdate.setTextColor(OK);
                         btnUpdate.setText("Atualizar para v" + i.name);
                     }
@@ -989,7 +1047,7 @@ public class MainActivity extends Activity {
         Updater.Info dl = Updater.downloaded(this);
         if (dl != null && pending == null && tvUpdate != null) {
             pending = dl;
-            tvUpdate.setText("Nova versão já baixada: v" + dl.name + "\n" + Updater.plain(dl.notes));
+            tvUpdate.setText("Nova versão já baixada: v" + dl.name);
             tvUpdate.setTextColor(OK);
             btnUpdate.setText("Instalar v" + dl.name);
         }
@@ -1016,6 +1074,7 @@ public class MainActivity extends Activity {
     // Recria a tela para aplicar tema/cor, voltando para a mesma página.
     private void restyle() {
         resumePage = curPage;
+        resumeCat = curCat;
         recreate();
     }
 
@@ -1047,7 +1106,7 @@ public class MainActivity extends Activity {
         l.setOrientation(LinearLayout.VERTICAL);
         for (String raw : notes.split("\n")) {
             String s = raw.trim();
-            if (s.isEmpty() || s.startsWith("## ") || s.startsWith("---")) continue;
+            if (s.isEmpty() || s.startsWith("## ") || s.startsWith("---") || s.startsWith("Criado por")) continue;
             if (s.startsWith("#")) {
                 TextView hd = text(s.replaceFirst("^#+\\s*", "").toUpperCase(Locale.ROOT), 11, Theme.ACC, true);
                 hd.setLetterSpacing(0.14f);
@@ -1294,13 +1353,18 @@ public class MainActivity extends Activity {
     }
 
     private void cycleFpsTarget() {
-        int[] rates = Monitor.supportedRates(this);
-        int cur = prefs.getInt("fps_target", 0);
-        int next = 0;
-        if (cur == 0) next = rates[0];
-        else for (int i = 0; i < rates.length; i++) if (rates[i] == cur) next = i + 1 < rates.length ? rates[i + 1] : 0;
-        prefs.edit().putInt("fps_target", next).apply();
-        updateChrome();
+        final int[] rates = Monitor.supportedRates(this);
+        int cur = prefs.getInt("fps_target", 0), sel = 0;
+        String[] names = new String[rates.length + 1];
+        names[0] = "Automática (" + Monitor.refreshRate(this) + " Hz)";
+        for (int i = 0; i < rates.length; i++) {
+            names[i + 1] = rates[i] + " Hz";
+            if (rates[i] == cur) sel = i + 1;
+        }
+        choose("Taxa alvo do FPS", names, sel, i -> {
+            prefs.edit().putInt("fps_target", i == 0 ? 0 : rates[i - 1]).apply();
+            updateChrome();
+        });
     }
 
     private void updateChrome() {
@@ -1852,24 +1916,40 @@ public class MainActivity extends Activity {
     private static final int[] HEAT = {0, 42, 44, 46, 48, 50};
 
     private void cycleHeat() {
-        int cur = prefs.getInt("heat_alert", 46), next = HEAT[0];
-        for (int i = 0; i < HEAT.length; i++) if (HEAT[i] == cur) next = HEAT[(i + 1) % HEAT.length];
-        prefs.edit().putInt("heat_alert", next).apply();
-        updateChrome();
+        int cur = prefs.getInt("heat_alert", 46), sel = 0;
+        String[] names = new String[HEAT.length];
+        for (int i = 0; i < HEAT.length; i++) {
+            names[i] = HEAT[i] == 0 ? "Desligado" : "CPU acima de " + HEAT[i] + "°C";
+            if (HEAT[i] == cur) sel = i;
+        }
+        choose("Alerta de calor", names, sel, i -> {
+            prefs.edit().putInt("heat_alert", HEAT[i]).apply();
+            updateChrome();
+        });
     }
 
+    // Dois pop-ups em sequência: tamanho e depois transparência.
     private void cycleBubble() {
-        int s = prefs.getInt("bubble_size", 1), a = prefs.getInt("bubble_alpha", 1);
-        // percorre as 9 combinações de tamanho e transparência
-        int k = (s * 3 + a + 1) % 9;
-        prefs.edit().putInt("bubble_size", k / 3).putInt("bubble_alpha", k % 3).apply();
-        updateChrome();
+        choose("Tamanho da bolha", new String[]{"Pequena", "Média", "Grande"}, prefs.getInt("bubble_size", 1), s -> {
+            prefs.edit().putInt("bubble_size", s).apply();
+            choose("Transparência da bolha", new String[]{"Bem transparente", "Transparente", "Opaca"}, prefs.getInt("bubble_alpha", 1), a -> {
+                prefs.edit().putInt("bubble_alpha", a).apply();
+                updateChrome();
+            });
+        });
     }
 
     private void cycleAutoClean() {
-        int cur = prefs.getInt("auto_clean_pct", 0), next = AUTO_PCT[0];
-        for (int i = 0; i < AUTO_PCT.length; i++) if (AUTO_PCT[i] == cur) next = AUTO_PCT[(i + 1) % AUTO_PCT.length];
-        prefs.edit().putInt("auto_clean_pct", next).apply();
+        int cur = prefs.getInt("auto_clean_pct", 0), sel = 0;
+        String[] names = new String[AUTO_PCT.length];
+        for (int i = 0; i < AUTO_PCT.length; i++) {
+            names[i] = AUTO_PCT[i] == 0 ? "Desligada" : "RAM acima de " + AUTO_PCT[i] + "%";
+            if (AUTO_PCT[i] == cur) sel = i;
+        }
+        choose("Limpeza automática no jogo", names, sel, i -> {
+            prefs.edit().putInt("auto_clean_pct", AUTO_PCT[i]).apply();
+            updateChrome();
+        });
     }
 
     private void loadPlayTime() {
