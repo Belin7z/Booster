@@ -325,24 +325,29 @@ public class MainActivity extends Activity {
 
         // Configurações
         LinearLayout set = page("Configurações", R.drawable.ic_settings);
-        set.addView(section("DURANTE O JOGO"));
+        LinearLayout hub = new LinearLayout(this);
+        hub.setOrientation(LinearLayout.VERTICAL);
+        set.addView(hub);
+        settingsHub = hub;
+        LinearLayout hubCard = card();
+        hub.addView(hubCard);
+        LinearLayout cMon = cat(set, "Monitor no jogo", "Itens, posição, tamanho e fundo", R.drawable.ic_overlay, hubCard);
+        LinearLayout cBub = cat(set, "Bolha e painel", "Bolha flutuante e apps rápidos", R.drawable.ic_gamepad, hubCard);
+        LinearLayout cDet = cat(set, "Detecção e otimização", "Detectar jogos, Não perturbe, acesso de uso", R.drawable.ic_play, hubCard);
+        LinearLayout cClean = cat(set, "Limpeza de RAM", "Nível, apps protegidos e limpeza automática", R.drawable.ic_memory, hubCard);
+        LinearLayout cAlert = cat(set, "Alertas e início", "Temperatura, rede, resumo e início com o celular", R.drawable.ic_thermo, hubCard);
+        LinearLayout cLook = cat(set, "Aparência", "Tema e cor de destaque", R.drawable.ic_tune, hubCard);
+        LinearLayout cPerm = cat(set, "Permissões", "Sobreposição, pop-ups e bateria", R.drawable.ic_shield, hubCard);
+        LinearLayout det = card();
         LinearLayout opts = card();
         swOverlay = sw(opts, "Monitor flutuante", "overlay", true);
         swOverlay.setOnCheckedChangeListener((v, on) -> {
             prefs.edit().putBoolean("overlay", on).apply();
             if (on && !Settings.canDrawOverlays(this)) askOverlay();
         });
-        swDnd = sw(opts, "Não perturbe ao jogar", "dnd", true);
-        swDnd.setOnCheckedChangeListener((v, on) -> {
-            prefs.edit().putBoolean("dnd", on).apply();
-            if (on && !dndAllowed()) {
-                toast("Permita o acesso a \"Não perturbe\" para o app.");
-                startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
-            }
-        });
         tvPos = rowItem(opts, "", R.drawable.ic_overlay, v -> cyclePosition());
-        set.addView(opts);
-        set.addView(section("ITENS DO MONITOR"));
+        cMon.addView(opts);
+        cMon.addView(section("ITENS DO MONITOR"));
         LinearLayout items = card();
         String[][] its = {{"FPS", "ov_fps", "1"}, {"FPS 1% low", "ov_low", "0"}, {"Temperatura da CPU", "ov_cpu", "1"},
                 {"Temperatura da GPU", "ov_gpu", "1"}, {"Memória RAM", "ov_ram", "1"}, {"Bateria", "ov_bat", "0"}, {"Ping da rede", "ov_ping", "0"},
@@ -362,20 +367,18 @@ public class MainActivity extends Activity {
             refreshOvLabels();
         });
         refreshOvLabels();
-        set.addView(items);
-        set.addView(text("PRÉ-VISUALIZAÇÃO", 11, MUT, true));
+        cMon.addView(items);
+        cMon.addView(text("PRÉ-VISUALIZAÇÃO", 11, MUT, true));
         LinearLayout pv = card();
         tvPreview = text("", 13, TXT, false);
         pv.addView(tvPreview);
-        set.addView(pv);
-        set.addView(section("LIMPEZA DE RAM"));
+        cMon.addView(pv);
         LinearLayout cl = card();
         tvLevel = rowItem(cl, "", R.drawable.ic_memory, v -> pickLevel());
         tvKeep = rowItem(cl, "", R.drawable.ic_shield, v -> pickKeep());
         tvAutoClean = rowItem(cl, "", R.drawable.ic_timer, v -> cycleAutoClean());
-        set.addView(cl);
-        set.addView(text("Os níveis Equilibrada e Máxima fecham apps de verdade e precisam do modo avançado conectado. Na Máxima, só o telefone, as mensagens SMS e os apps que você marcar sobrevivem; o resto precisa ser aberto de novo. A limpeza automática roda durante o jogo quando a RAM passa do limite, no máximo a cada 3 minutos.", 12, MUT, false));
-        set.addView(section("ALERTAS E INÍCIO"));
+        cClean.addView(cl);
+        cClean.addView(text("Os níveis Equilibrada e Máxima fecham apps de verdade e precisam do modo avançado conectado. Na Máxima, só o telefone, as mensagens SMS e os apps que você marcar sobrevivem; o resto precisa ser aberto de novo. A limpeza automática roda durante o jogo quando a RAM passa do limite, no máximo a cada 3 minutos.", 12, MUT, false));
         LinearLayout al = card();
         tvHeat = rowItem(al, "", R.drawable.ic_thermo, v -> cycleHeat());
         sw(al, "Iniciar o monitor ao ligar o celular", "boot", true)
@@ -386,9 +389,8 @@ public class MainActivity extends Activity {
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("net_alert", on).apply());
         sw(al, "Resumo da partida em notificação", "post_summary", true)
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("post_summary", on).apply());
-        set.addView(al);
-        set.addView(text("No Xiaomi, permita também o início automático do Booster nas permissões do app para o início com o celular funcionar.", 12, MUT, false));
-        set.addView(section("APARÊNCIA"));
+        cAlert.addView(al);
+        cAlert.addView(text("No Xiaomi, permita também o início automático do Booster nas permissões do app para o início com o celular funcionar.", 12, MUT, false));
         LinearLayout ap2 = card();
         tvTheme = rowItem(ap2, "Tema: " + Theme.MODES[Theme.mode(this)], R.drawable.ic_tune, v -> {
             prefs.edit().putInt("theme", (Theme.mode(this) + 1) % Theme.MODES.length).apply();
@@ -398,8 +400,7 @@ public class MainActivity extends Activity {
             prefs.edit().putInt("accent", (Theme.accentIndex(this) + 1) % Theme.ACCENTS.length).apply();
             restyle();
         });
-        set.addView(ap2);
-        set.addView(section("PAINEL NO JOGO"));
+        cLook.addView(ap2);
         LinearLayout gpc = card();
         sw(gpc, "Bolha do Booster durante o jogo", "panel", true)
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("panel", on).apply());
@@ -409,10 +410,8 @@ public class MainActivity extends Activity {
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("panel_float", on).apply());
         tvBubble = rowItem(gpc, "", R.drawable.ic_overlay, v -> cycleBubble());
         rowItem(gpc, "Apps do painel (acesso sem sair do jogo)", R.drawable.ic_add, v -> pickApps("panel_apps", "Apps no painel do jogo", GamePanel.apps(this)));
-        set.addView(gpc);
-        set.addView(text("A bolha aparece sozinha ao entrar em qualquer jogo da sua biblioteca, mesmo aberto fora do app (precisa do acesso de uso). Arraste-a para qualquer ponto da tela; parada, ela fica translúcida e se esconde na borda. Toque nela para liberar RAM, ligar o Não perturbe ou abrir outros apps. Por padrão os apps abrem em tela cheia; a janela flutuante é experimental e pode ficar sem ajuste em algumas ROMs.", 12, MUT, false));
-        set.addView(section("DETECÇÃO DE JOGOS"));
-        LinearLayout det = card();
+        cBub.addView(gpc);
+        cBub.addView(text("A bolha aparece sozinha ao entrar em qualquer jogo da sua biblioteca, mesmo aberto fora do app (precisa do acesso de uso). Arraste-a para qualquer ponto da tela; parada, ela fica translúcida e se esconde na borda. Toque nela para liberar RAM, ligar o Não perturbe ou abrir outros apps. Por padrão os apps abrem em tela cheia; a janela flutuante é experimental e pode ficar sem ajuste em algumas ROMs.", 12, MUT, false));
         sw(det, "Detectar jogos automaticamente", "auto", true).setOnCheckedChangeListener((v, on) -> {
             prefs.edit().putBoolean("auto", on).apply();
             if (on && !OverlayService.running) startForegroundService(new Intent(this, OverlayService.class));
@@ -421,16 +420,23 @@ public class MainActivity extends Activity {
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("auto_boost", on).apply());
         sw(det, "Mostrar o monitor só durante jogos", "ov_only_game", false)
                 .setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("ov_only_game", on).apply());
+        swDnd = sw(det, "Não perturbe ao jogar", "dnd", true);
+        swDnd.setOnCheckedChangeListener((v, on) -> {
+            prefs.edit().putBoolean("dnd", on).apply();
+            if (on && !dndAllowed()) {
+                toast("Permita o acesso a \"Não perturbe\" para o app.");
+                startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
+            }
+        });
         tvUsage = rowItem(det, "", R.drawable.ic_check, v -> usageAccess());
-        set.addView(det);
-        set.addView(text("Com o acesso ao uso de apps (ou o modo avançado conectado) o Booster sabe qual jogo está aberto, mede o FPS dele e grava o relatório sozinho.", 12, MUT, false));
-        set.addView(section("PERMISSÕES"));
+        cDet.addView(det);
+        cDet.addView(text("Com o acesso ao uso de apps (ou o modo avançado conectado) o Booster sabe qual jogo está aberto, mede o FPS dele e grava o relatório sozinho.", 12, MUT, false));
         LinearLayout perms = card();
         tvOverlayPerm = rowItem(perms, "", R.drawable.ic_check, v -> askOverlay());
         rowItem(perms, "Pop-up em segundo plano (Xiaomi)", R.drawable.ic_overlay, v -> openMiuiPerms());
         rowItem(perms, "Bateria sem restrições", R.drawable.ic_battery, v -> openAction(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
-        set.addView(perms);
-        set.addView(text("No HyperOS, para o monitor aparecer sobre o jogo, ative \"Exibir pop-ups durante execução em segundo plano\" e \"Exibir na tela de bloqueio\" nas permissões do Booster.", 12, MUT, false));
+        cPerm.addView(perms);
+        cPerm.addView(text("No HyperOS, para o monitor aparecer sobre o jogo, ative \"Exibir pop-ups durante execução em segundo plano\" e \"Exibir na tela de bloqueio\" nas permissões do Booster.", 12, MUT, false));
 
         // Atalhos
         LinearLayout sc = page("Atalhos e dicas", R.drawable.ic_tools);
@@ -622,6 +628,7 @@ public class MainActivity extends Activity {
     }
 
     private void showPage(int idx) {
+        if (idx != curPage && idx == pageNames.indexOf("Configurações")) closeCat();
         curPage = idx;
         for (int i = 0; i < pages.size(); i++) {
             pages.get(i).setVisibility(i == idx ? View.VISIBLE : View.GONE);
@@ -775,9 +782,46 @@ public class MainActivity extends Activity {
         animateDrawer(open);
     }
 
+    private LinearLayout settingsHub;
+    private final List<LinearLayout> settingsCats = new ArrayList<>();
+
+    // Cria uma categoria de configurações (tela própria, com voltar) e a linha correspondente no menu.
+    private LinearLayout cat(LinearLayout set, String title, String sub, int icon, LinearLayout hubCard) {
+        LinearLayout c = new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setVisibility(View.GONE);
+        TextView back = text("‹  " + title, 17, Theme.ACC, true);
+        back.setPadding(0, (int) dp(8), 0, (int) dp(8));
+        back.setOnClickListener(v -> closeCat());
+        c.addView(back);
+        set.addView(c);
+        settingsCats.add(c);
+        TextView row = rowItem(hubCard, title, icon, v -> openCat(c));
+        android.text.SpannableString ss = new android.text.SpannableString(title + "\n" + sub);
+        ss.setSpan(new android.text.style.RelativeSizeSpan(0.8f), title.length() + 1, ss.length(), 0);
+        ss.setSpan(new android.text.style.ForegroundColorSpan(MUT), title.length() + 1, ss.length(), 0);
+        row.setText(ss);
+        return c;
+    }
+
+    private void openCat(LinearLayout c) {
+        settingsHub.setVisibility(View.GONE);
+        for (LinearLayout x : settingsCats) x.setVisibility(x == c ? View.VISIBLE : View.GONE);
+        ((ScrollView) pages.get(pageNames.indexOf("Configurações"))).scrollTo(0, 0);
+    }
+
+    private boolean closeCat() {
+        if (settingsHub == null || settingsHub.getVisibility() == View.VISIBLE) return false;
+        for (LinearLayout x : settingsCats) x.setVisibility(View.GONE);
+        settingsHub.setVisibility(View.VISIBLE);
+        ((ScrollView) pages.get(pageNames.indexOf("Configurações"))).scrollTo(0, 0);
+        return true;
+    }
+
     @Override
     public void onBackPressed() {
         if (drawerOpen) toggleDrawer(false);
+        else if (curPage == pageNames.indexOf("Configurações") && closeCat()) return;
         else super.onBackPressed();
     }
 
